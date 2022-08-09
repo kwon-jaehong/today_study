@@ -15,7 +15,7 @@ VIT 포지션 임베딩
 
 
 
-![](%EC%9D%B4%EB%AF%B8%EC%A7%80/%EB%85%BC%EB%AC%B8/swin_tr/Screenshot%20from%202022-08-08%2014-10-54.png)
+![](../%EC%9D%B4%EB%AF%B8%EC%A7%80/%EB%85%BC%EB%AC%B8/swin_tr/Screenshot%20from%202022-08-08%2014-10-54.png)
 
 
 
@@ -24,7 +24,7 @@ M : 윈도우 사이즈 - 윈도우 사이즈는 패치 갯수로 정함
 n : 한 윈도우의 패치 갯수
 N : 전체 패치갯수
 
-![](%EC%9D%B4%EB%AF%B8%EC%A7%80/%EB%85%BC%EB%AC%B8/swin_tr/Screenshot%20from%202022-08-08%2014-12-38.png)
+![](../%EC%9D%B4%EB%AF%B8%EC%A7%80/%EB%85%BC%EB%AC%B8/swin_tr/Screenshot%20from%202022-08-08%2014-12-38.png)
 
 
 --------------------------
@@ -42,8 +42,9 @@ https://www.youtube.com/watch?v=2lZvuU_IIMA
 vit와 다른점은 cls토큰을 쓰지 않음
 각 토큰들의 평균값을 사용하여 분류문제를 해결함
 
-로컬 윈도우를 적용해 기존 vit보다 더 적은 복잡성을 가짐
-
+로컬 윈도우를 적용해 기존 vit보다 더 적은 복잡성을 가짐 
+local window를 적용하여 인덕티브바이어스를 개입
+패치 머징을 통해 계층적 구조 형성
 
 
 
