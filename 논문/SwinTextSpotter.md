@@ -1,4 +1,16 @@
 
+-------------------
+
+아키텍쳐
+    swin trans 1장
+    FPN + 실제 코드 아웃풋 쉐이프 한장 
+    ROI align 1장 가볍게
+    RCNN (디텍터 2장)
+
+
+-------------------
+
+
 특징
 ->
 마스크맵을 이용해 인식기에서 인식을 집중할 수 있도록 함
@@ -7,6 +19,8 @@
 크레프트 + CRNN 이라면?
 글자영역을 자름 -> 넘김 -> 인식기에서 잡음까지 다봄
 -> 어텐션 스코어가 없어서 그럼
+
+
 
 
 
@@ -24,7 +38,6 @@ SwinTextSpotter
 단점
 1. error accumulation between these two tasks
 imprecise detection result may heavily hinder the performance of text recognition.부정확한 감지 결과는 텍스트 인식 성능을 크게 저하시킬 수 있습니다.
-
 
 2. separate optimization of the two tasks might not maximize the final performance of text spotting.두 작업의 개별 최적화는 텍스트 스포팅의 최종 성능을 최대화하지 못할 수 있습니다.
 
@@ -53,20 +66,92 @@ end to end로 하는 방법이 있음
 
 
 방법론
-그림의 녹색 화살표와 같이2, 감지의 첫 번째 단계에서 먼저 학습 가능한 매개변수를 무작위로 초기화하여 프로포졀 피쳐, 비박스,
 
-To make the proposal features contain global information
-제안 기능에 전역 정보가 포함되도록 하려면
-우리는 이미지 특징을 추출하기 위해 글로벌 평균 풀링을 사용합니다
+The overall architecture of SwinTextSpotter is presented in Figure 2, which consists of four components:
+(1) a backbone based on Swin-Transformer [31]; 
+(2) a querybased text detector; 
+(3) a Recognition Conversion module to bridge the text detector and recognizer; 
+and (4) an attentionbased recognizer.
+
+SwinTextSpotter의 전체 아키텍처는 네 가지 구성 요소로 구성된 그림 2에 나와 있습니다.
+(1) Swin-Transformer [31]에 기반한 백본;
+(2) 쿼리 기반 텍스트 검출기;
+(3) 텍스트 감지기와 인식기를 연결하는 인식 변환 모듈;
+및 (4) 주의 기반 인식기.
+
+
+As illustrated in the green arrows of Figure 2, in the first stage of detection, we first randomly initialize trainable parameters to be the boxes bbox0 and proposal features f-prop(0).
+그림 2의 녹색 화살표에서 볼 수 있듯이 첫 번째 감지 단계에서 먼저 학습 가능한 매개변수를 무작위로 초기화하여 상자 bbox0 및 제안 기능 f-prop(0)이 되도록 합니다.
+
+To make the proposal features contain global information, we use global average pooling to extract the image features and add them into f-prop(0).
+proposal features에 전역 정보가 포함되도록 하기 위해 전역 평균 풀링을 사용하여 이미지 기능을 추출하고 f-prop(0)에 추가합니다.
+
+
+We then extract the RoI features using bbox0. The RoI features and f-prop(0) are fed into the Transformer encoder with dynamic head.
+그런 다음 bbox0을 사용하여 RoI 기능을 추출합니다. RoI 기능과 f-prop(0)은 동적 헤드가 있는 Transformer 인코더에 제공됩니다.
+
+The output of the Transformer encoder is flattened and forms the proposal features f-prop(1) , which will be fed into the detection head to output the detection result.
+Transformer 인코더의 출력은 flattened되고 proposal features-> f-prop(1) 을 형성하며, 이는 감지 헤드에 공급되어 감지 결과를 출력합니다.
+
+
+The box(bbox(k−1)) and proposal feature f-prop(k−1) will serve as the input to later(k-th) stage of detection.
+box(bbox(k−1))와 제안 특징 f-prop(k−1)은 검출의 나중(k번째) 단계에 대한 입력으로 사용됩니다.
+
+The proposal feature f-prop(k) recurrently updates itself by fusing the RoI features with previous f-prop(k−1), which makes proposal features preserve the information from previous stages.
+
+proposal feature f-prop(k)는 RoI features을 이전 f-prop(k-1)과 융합하여 반복적으로 자체 업데이트하므로 proposal feature이 이전 단계의 정보를 보존합니다.
+
+
+We repeat such refinement for totally K stages, resembling the iterative structure in the query-based detector [4,13,45,68]. Such design allows more robust detection in sizes and aspect ratios [45]. More details of the detector is explained in Section 3-2.
+쿼리 기반 검출기 [4,13,45,68]의 반복 구조와 유사한 완전히 K 단계에 대해 이러한 정제를 반복합니다.
+이러한 디자인은 크기와 종횡비에서 보다 강력한 감지를 가능하게 합니다[45]. 검출기에 대한 자세한 내용은 섹션 3-2에 설명되어 있습니다.
+
+
+
+Since the recognition stage (orange arrows) requires higher rate of resolution than detection, we use the final detection stage output box bboxK to obtain the RoI features whose resolution is four times as much as that in the detection stage.
+인식 단계(주황색 화살표)는 탐지보다 더 높은 분해능을 요구하므로 최종 탐지 단계 출력 상자 bbox-K를 사용하여 탐지 단계의 해상도보다 4배 더 높은 RoI features을 얻습니다.
+
+
+In order to keep the resolution of features consistent with the detector when fused with proposal features, we down-sample the RoI features to get three feature maps of descending sizes, denoting by {a1, a2, a3}. 
+proposal feature과 융합할 때 features의 해상도를 검출기와 일치하도록 유지하기 위해 RoI 기능을 다운샘플링하여 {a1, a2, a3}으로 표시되는 내림차순 크기의 세 가지 기능 맵을 얻습니다.
+
+
+
+Then we obtain detection features f-det by fusing the smallest a3 and the proposal features f-prop-K.
+그런 다음 가장 작은 a3와 proposal features (f-prop-K)를 융합하여 탐지 특징 f-det를 얻습니다.
+
+
+The detection features (f-det) in recognition stage contain all previous detection information. 
+인식 단계의 감지 기능(f-det)에는 이전의 모든 감지 정보가 포함됩니다.
+
+
+Finally the {a1, a2, a3} and the detection features(f-det) are sent into Recognition Conversion and recognizer for generating the recognition result. More details of Recognition Conversion and recognizer are explained in Section 3-3 and Section 3-4, respectively.
+마지막으로 {a1, a2, a3} 및 감지 기능(f-det)은 인식 결과를 생성하기 위해 인식 변환 및 인식기로 전송됩니다. Recognition Conversion과 Recognizer에 대한 자세한 내용은 각각 3-3절과 3-4절에서 설명합니다.
+
+
+
+
 
 
 3.1 딜레이트 swin-transformer
+
+Vanilla convolutions operate locally at fixed size
+바닐라 컨볼루션은 고정 크기에서 로컬로 작동합니다.
+
+which causes low efficacy in connecting remote features
+멀리 떨어진 피쳐들을 연결할 때 효율성이 낮습니다.
+
+For text spotting, however, modeling the relationships between different texts is critical since scene texts from the same image share strong similarity, such as their backgrounds and text styles.
 그러나 텍스트 스포팅의 경우 동일한 이미지의 장면 텍스트가 배경 및 텍스트 스타일과 같은 강한 유사성을 공유하므로 서로 다른 텍스트 간의 관계를 모델링하는 것이 중요합니다.
 
-글로벌 모델링 능력과 연산 효율성을 고려하여,
+
+Considering the global modeling capability and computational efficiency, we choose Swin-Transformer [31] with a Feature Pyramid Network (FPN) [25] to build our backbone.
+글로벌 모델링 기능과 계산 효율성을 고려하여 Swin-Transformer[31]와 FPN(Feature Pyramid Network)[25]을 선택하여 백본을 구축합니다.
+
 
 Given the blanks existing between words in a line of text, the receptive field should be large enough to help distinguish whether adjacent texts belong to the same text line.
 텍스트 줄에서 단어 사이에 공백이 있는 경우 수신 필드는 인접한 텍스트가 동일한 텍스트 줄에 속하는지 구별하는 데 도움이 될 만큼 충분히 커야 합니다
+
 
 To achieve such receptive field, as illustrated in Figure 3, we incorporate two dilated convolution layers one vanilla convolution layer and one residual structure into the original Swin-Transformer, which also introduce the properties of CNN to Transformer.
 이러한 수용 필드를 달성하기 위해 그림 3과 같이 두 개의 확장된 컨볼루션 레이어를 하나의 바닐라 컨볼루션 레이어와 하나의 잔여 구조를 원래 Swin-Transformer에 통합하고 CNN의 속성도 Transformer에 도입합니다.
@@ -254,7 +339,8 @@ H-mean 계산 방법
 https://neverabandon.tistory.com/60
 https://sumniya.tistory.com/26
 
-
+-------------------------------
+ROI피쳐는 이미지에서 그영역에서 땡겨오는 피쳐
 
 
 
