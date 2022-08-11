@@ -1,10 +1,12 @@
 
 swin transformer
 
+shifted window transformer
+
 VIT 포지션 임베딩
 -> 학습이 가능하도록 변수로 지정
 
-기존존 vit는 분류 문제를 풀기위한 모델로 제안
+기존 vit는 분류 문제를 풀기위한 모델로 제안
 이미지 토큰수가 증가함에 따라 연산량이 quadratic하게 증가함에
 
 

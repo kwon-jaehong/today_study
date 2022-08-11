@@ -25,8 +25,8 @@ proposal 피쳐 20분 38초 implicit knowledge.
 
 ! 중첩,많은수 오브젝트 디텍션, 작은물체 등 도메인에 따라 모델의 하이퍼 파라미터를 튜닝해야됨 
 
-1.스파스한 박스
-2.스파스한 피쳐
+(1) sparse boxes: 많은 이미지를 학습해서 얻은 이미지에서 객체가 위치할 만한 100개의 박스 좌표
+(2) sparse features: 각 box에 좀더 구체적인 정보를 제공해 준다. 모양, 형태 등. ROI Align된 feature map을 conv 1x1의 형식으로 통과시킬때 layer의 weight 역할을 한다.
 
 다시 그림
 ![](../%EC%9D%B4%EB%AF%B8%EC%A7%80/%EB%85%BC%EB%AC%B8/Sparse%20R%20-CNN/Screenshot%20from%202022-08-10%2010-50-30.png)
