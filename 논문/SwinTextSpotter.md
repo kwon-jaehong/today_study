@@ -1,3 +1,10 @@
+할거 -> 마스크 r3 r1 r2 맵 찍어보자
+
+
+
+단점
+1. 도메인이 바뀌면 처음부터 끝까지 학습
+2. 모델 분석/디버깅 불가능 -> 학습할때 이상한데이터를 넣거나 잘못 학습이 되면 2개다 망가짐
 
 
 -------------------
@@ -11,6 +18,8 @@
     ROI align 1장 가볍게
     
     RCNN (디텍터 2장)
+
+    요약 및 내 느낀점 1장
 
 
 -------------------
@@ -100,10 +109,9 @@ Transformer 인코더의 출력은 flattened되고 proposal features-> f-prop(1)
 
 
 The box(bbox(k−1)) and proposal feature f-prop(k−1) will serve as the input to later(k-th) stage of detection.
-box(bbox(k−1))와 제안 특징 f-prop(k−1)은 검출의 나중(k번째) 단계에 대한 입력으로 사용됩니다.
+box(bbox(k−1))와 proposal feature f-prop(k−1)은 검출의 나중(k번째) 단계에 대한 입력으로 사용됩니다.
 
 The proposal feature f-prop(k) recurrently updates itself by fusing the RoI features with previous f-prop(k−1), which makes proposal features preserve the information from previous stages.
-
 proposal feature f-prop(k)는 RoI features을 이전 f-prop(k-1)과 융합하여 반복적으로 자체 업데이트하므로 proposal feature이 이전 단계의 정보를 보존합니다.
 
 
@@ -131,7 +139,7 @@ The detection features (f-det) in recognition stage contain all previous detecti
 
 
 Finally the {a1, a2, a3} and the detection features(f-det) are sent into Recognition Conversion and recognizer for generating the recognition result. More details of Recognition Conversion and recognizer are explained in Section 3-3 and Section 3-4, respectively.
-마지막으로 {a1, a2, a3} 및 감지 기능(f-det)은 인식 결과를 생성하기 위해 인식 변환 및 인식기로 전송됩니다. Recognition Conversion과 Recognizer에 대한 자세한 내용은 각각 3-3절과 3-4절에서 설명합니다.
+마지막으로 {a1, a2, a3} 및 detection features(f-det)은 인식 결과를 생성하기 위해 인식 변환 및 인식기로 전송됩니다. Recognition Conversion과 Recognizer에 대한 자세한 내용은 각각 3-3절과 3-4절에서 설명합니다.
 
 
 
@@ -282,7 +290,7 @@ Therefore the masks {M1, M2, M3} produced by RC, which will be applied to the re
 
 
 With RC, the gradient of recognition loss not only flows back to the backbone network, but also to the proposal features.
-따라서 인식 특성 {r1, r2, r3}에 적용될 RC에 의해 생성된 마스크 {M1, M2, M3}은 인식기가 텍스트 영역에 더 쉽게 집중할 수 있도록 합니다.
+RC를 사용하면 인식 손실의 기울기가 백본 네트워크뿐만 아니라 제안 기능으로 다시 흐른다.
 
 Optimized by both detection supervision and recognition supervision, the proposal features can better encode the high-level semantic information of the texts. Therefore, the proposed RC can incentivize the coordination between detection and recognition.
 탐지 감독과 인식 감독 모두에 의해 최적화된 제안 기능은 텍스트의 높은 수준의 의미 정보를 더 잘 인코딩할 수 있습니다. 따라서 제안된 RC는 탐지와 인식 간의 조정을 장려할 수 있습니다.
@@ -308,7 +316,8 @@ TLSAM(two-level self-attention mechanism)에는 로컬 이웃 지역 및 글로�
 
 
 Therefore, it can effectively extract fine-grained features while maintaining global modeling capability. As for the decoder, we simply follow MaskTextSpotter by using the Spatial Attention Module (SAM) [22]. The recognition loss is as follow:
-따라서 글로벌 모델링 기능을 유지하면서 세분화된 기능을 효과적으로 추출할 수 있습니다. 디코더의 경우 SAM(Spatial Attention Module)을 사용하여 MaskTextSpotter를 따르기만 하면 됩니다[22]. 인식손실은 다음과 같습니다.
+따라서 글로벌 모델링 기능을 유지하면서 세분화된 기능을 효과적으로 추출할 수 있습니다. 
+디코더의 경우 SAM(Spatial Attention Module)을 사용하여 MaskTextSpotter를 따르기만 하면 됩니다[22]. 인식손실은 다음과 같습니다.
 
 
 wherein T is the max length of the sequence and p(yi) is the probability of sequence.
@@ -324,7 +333,15 @@ wherein T is the max length of the sequence and p(yi) is the probability of sequ
 
 
 
+참고 논문
+--------------------------------------------------
+디텍션 헤드
+https://velog.io/@minkyu4506/%EB%85%BC%EB%AC%B8%EB%A6%AC%EB%B7%B0-Dynamic-Head-Unifying-Object-Detection-Heads-with-Attentions
 
+포칼 트랜스포머
+https://sh-tsang.medium.com/review-focal-transformer-focal-self-attention-for-local-global-interactions-in-vision-dbf77c56dd35
+
+-----------------------------
 
 
 잡다한 지식
