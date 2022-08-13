@@ -1,13 +1,18 @@
 할거 -> 마스크 r3 r1 r2 맵 찍어보자
 
 
-
+-------------------------------------------------
 단점
 1. 도메인이 바뀌면 처음부터 끝까지 학습
+언어 확장이나 어떠한 특정 테스크에 대해 처음부터 끝까지 학습 & 튜닝을 다시해야한다
+-> 안되는거 사진 보여주기
+
 2. 모델 분석/디버깅 불가능 -> 학습할때 이상한데이터를 넣거나 잘못 학습이 되면 2개다 망가짐
 
 
--------------------
+
+
+----------------------------------------------------
 
 
 발표자료
@@ -51,7 +56,8 @@ SwinTextSpotter
 추출기 + 인식기를 따로 개발해서 이어붙임
 단점
 1. error accumulation between these two tasks
-imprecise detection result may heavily hinder the performance of text recognition.부정확한 감지 결과는 텍스트 인식 성능을 크게 저하시킬 수 있습니다.
+imprecise detection result may heavily hinder the performance of text recognition.
+부정확한 감지 결과는 텍스트 인식 성능을 크게 저하시킬 수 있습니다.
 
 2. separate optimization of the two tasks might not maximize the final performance of text spotting.두 작업의 개별 최적화는 텍스트 스포팅의 최종 성능을 최대화하지 못할 수 있습니다.
 
@@ -356,6 +362,10 @@ ROI 풀링은 관심영역을 그리드로 나누고, 그 그리드 안에서 �
 roi align은?
 -> roi 풀링 과정에서 좌표 양자화를 할때 (소수점 떌떼), 오정렬이 생길수 있음
 양자화 없이 k(그리드)로 나누고, bilinear interpolation(쌍선형보간법)으로 보간 하고 맥스풀링 실행
+----------
+헤드라는 개념은?
+백본에서 추출된 특징을 분류나,바운딩박스 좌표등의 최종적인 형태로 나타내는 서브네트워크를 head라고 한다.
+
 --------------------------------------------------
 H-mean 계산 방법
 https://neverabandon.tistory.com/60
@@ -379,13 +389,6 @@ ROI피쳐는 이미지에서 그영역에서 땡겨오는 피쳐
 
 
 4.FPN 피쳐값 합침
-
-------------------------------------------
-
-단점 END to END 라서
-언어 확장이나 어떠한 특정 테스크에 대해 처음부터 끝까지 학습 & 튜닝을 다시해야한다
--> 안되는거 사진 보여주기
-
 
 
 
