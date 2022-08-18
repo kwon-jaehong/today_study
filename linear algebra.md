@@ -10,10 +10,11 @@ https://www.youtube.com/watch?v=k7RM-ot2NWY&list=PLZHQObOWTQDPD3MizzM2xVFitgF8hE
 
 !벡터들의 집합을 다룰때는 점이라고 생각하자
 
+--------------
+선형 변환 (다시볼것)
+linear transformation (트랜스포메이션이 함수라고 생각하자)
 
-
-
-
+변환을 해도 결합은 유지
 
 
 
