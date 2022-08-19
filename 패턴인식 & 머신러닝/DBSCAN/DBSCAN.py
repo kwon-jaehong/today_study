@@ -8,7 +8,6 @@
 
 # ⑤ 현재 클러스터링이 끝나면 새로운 방문하지 않은 point가 나오고 다시 위 과정이 반복된다. 이는 더 먼 거리에 있는 cluster와 noise를 발견하기 위함이다. 이 과정도 모든 points를 방문할 때까지 계속된다.
 
-from cProfile import label
 import numpy as np
 
 ## 2차원 이상일 경우 np로 계산
@@ -37,17 +36,15 @@ calculate_list.append(x[0])
 
 ## 조건문 
 while len(calculate_list) > 0:
-    
     serch_var = calculate_list.pop(0)
     
     ## 거리계산값, 검색 여부의 index만 뽑아옴
-    candidate_index_list = [ i for var,label,flg,i in x if flg==False and distance(serch_var[0],var) < e_var ]
-    
-    ## candidate_index_list = []
+    candidate_index_list = [ i for var,label,flg,i in x if flg==False and distance(serch_var[0],var) < Epsilon ]
+    # candidate_index_list = []
     # for i,item in enumerate(x):
     #     if item[2]==False:
     #         if distance(serch_var[0],item[0]) < e_var:
-    #             candidate_index_list.append(i)
+    #             candidate_index_list.append(i)    
     
     
     for index in candidate_index_list:
@@ -57,6 +54,7 @@ while len(calculate_list) > 0:
         
         ## 검색할 list에 더함
         calculate_list.append(x[index])
+    
     
     ## 다 검사하지 않았다면 검색 안된 x배열의 정보를 계산(큐) 배열에 추가
     if len(calculate_list)==0 and np.all(x[:,2]==1)==False:
