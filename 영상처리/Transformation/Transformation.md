@@ -25,8 +25,12 @@ Projective Transformation(원근변환)
 
 
 ---------------------------
+https://wingnim.tistory.com/94
+https://zzzinho.tistory.com/12
+
 
 affine 변환
+
 2차원 좌표계를 한축을 더해 3차원 행렬로, 만들고 이동량, 회전
 -> 선형변환과 이동변환까지 포함한 변환
 -> 트랜슬레이션, 쉬어,스케일링,회전등을 통틀어 어파인 변환이라 한다.
