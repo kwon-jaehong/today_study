@@ -55,7 +55,6 @@ a가 단위벡터로 존재할수 있는 공간에 b벡터가 존재하면 이�
 
 독립성을 판단하려면?
 유데미49강
-왜 0행렬로 만들어 줘야하는지 귀류법으로 https://www.youtube.com/watch?v=KSfEpruL0hg&t=173s
-
+왜 0행렬로 만들어 줘야하는지 귀류법으로 https://www.youtube.com/watch?v=KSfEpruL0hg&t=173s 
 
 
