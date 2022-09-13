@@ -1,4 +1,13 @@
 support vector machines
+
+--------------
+선행 지식
+
+퍼셉트론
+최적화 이론
+미적분
+
+
 ----------------------------
 https://hleecaster.com/ml-svm-concept/
 
@@ -17,6 +26,10 @@ https://www.youtube.com/watch?v=eZtrD6pYaaE
 
 margin이 클수록 capacity term이 작아진다
 
+
+초평면에 대한 개념은 
+-> https://www.youtube.com/watch?v=JW2BsQZoqpw&t=152s 
+5분 20초
 
 
 기존에 어떤 모델로 분류를 하게되면, 트레이닝 데이터에대해 완벽하게 핏팅이된다 - 오버핏팅 ( 실제 데이터에 대해서는 좋지 않음 )
@@ -52,6 +65,8 @@ n개의 속성을 가진 데이터에는 최소 n+1개의 서포트 벡터가 �
 https://zephyrus1111.tistory.com/211
 
 
+soft svm
+완벽하게 나눌수 없으므로 에러를 허용하는 svm
 
 
 
