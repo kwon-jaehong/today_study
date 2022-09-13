@@ -18,11 +18,15 @@ class SVM:
         self.b = 0
 
         for _ in range(self.n_iters):
+            ## 자료 X를 하나하나 꺼냄
             for idx, x_i in enumerate(X):
+                ## 플러스 1짜리 위치의 자료형인가 검사
                 condition = y_[idx] * (np.dot(x_i, self.w) - self.b) >= 1
                 if condition:
+                    print("들어옴",x_i,y_[idx] * (np.dot(x_i, self.w) - self.b))
                     self.w -= self.lr * (2 * self.lambda_param * self.w)
-                else:
+                else: ## 
+                    print("안들어옴",x_i,y_[idx] * (np.dot(x_i, self.w) - self.b))
                     self.w -= self.lr * (
                         2 * self.lambda_param * self.w - np.dot(x_i, y_[idx])
                     )
