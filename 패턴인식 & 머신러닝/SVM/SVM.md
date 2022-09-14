@@ -10,7 +10,7 @@ support vector machines
 
 ----------------------------
 https://hleecaster.com/ml-svm-concept/
-
+https://www.youtube.com/watch?v=Lpr__X8zuE8
 ----------------------------------
 https://www.youtube.com/watch?v=qFg8cDnqYCI
 

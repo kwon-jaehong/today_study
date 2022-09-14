@@ -19,6 +19,15 @@ https://www.youtube.com/watch?v=QJSSWNIAPlw
 
 
 ----------------
+최적화 문제 종류
+
+unconstrained vs constrained (제약 조건이 있을때와 없을때)
+
+------------------
+convex optimiztion
+
+=> 컨벡스 최적화에서 로컬 solution을 찾으면 -> 글로벌 솔루션이다.
+
 
 
 
