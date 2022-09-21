@@ -1,2 +1,8 @@
 env/
 .vscode/
+*.zip*
+대회/
+dataset/
+*data*
+*.pt*
+*.pth*
