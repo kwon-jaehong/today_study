@@ -1,7 +1,7 @@
 env/
 .vscode/
 *.zip*
-대회/
+대회/dacon/관광데이터/image
 dataset/
 *data*
 *.pt*
