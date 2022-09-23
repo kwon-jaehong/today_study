@@ -1,32 +1,33 @@
-from distutils.command.config import config
 import random
 import pandas as pd
 import numpy as np
 import os
 import cv2
-from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from tqdm.auto import tqdm
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 from sklearn.metrics import f1_score
-import warnings
 from konlpy.tag import Mecab
-from torchtext import data
+
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter('runs/fashion_mnist_experiment_1')
 
 # 토치 텍스트 관련 참조자료
 # https://towardsdatascience.com/custom-datasets-in-pytorch-part-2-text-machine-translation-71c41a3e994e
 
 
-warnings.filterwarnings(action='ignore')
 CFG = {
     'IMG_SIZE':128,
-    'EPOCHS':1000,
+    'EPOCHS':10,
     'LEARNING_RATE':3e-4,
     'BATCH_SIZE':64,
-    'SEED':41
+    'SEED':41,
+    'MAX_VOCAB_SIZE':100000,
+    'TRAIN_RATE':0.9,
+    'NUM_WORKERS':4
 }
 def seed_everything(seed):
     random.seed(seed)
@@ -36,14 +37,8 @@ def seed_everything(seed):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-
-
 seed_everything(CFG['SEED']) # Seed 고정
-
-
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-
 
 
 
@@ -54,7 +49,6 @@ class Vocabulary:
         self.mecab = mecab
         self.freq_threshold = freq_threshold
         self.max_size = max_size
-        
         self.bi_gram =True
     
     def __len__(self):
@@ -88,10 +82,6 @@ class Vocabulary:
             self.stoi[word] = idx
             self.itos[idx] = word
             idx+=1
-            
-
-        
-
     def numericalize(self, text):
         tokenized_text = self.mecab.morphs(text)
         numericalized_text = []
@@ -109,10 +99,6 @@ class Vocabulary:
         for n_gram in n_grams:
             x.append(' '.join(n_gram))
         return x
-
-    
-
-
 class CustomDataset(Dataset):
     def __init__(self,csv_path,max_vocab_size,transforms,infer=False):
         self.all_df = pd.read_csv(csv_path)        
@@ -126,13 +112,7 @@ class CustomDataset(Dataset):
         self.lable2num = {label:i for i,label in enumerate(list(set(self.label_list)))}
         
         self.TEXT = Vocabulary(0,max_vocab_size,Mecab())
-        self.TEXT.build_vocabulary(self.text_list)
-        
-        
-
-                
-        # self.TEXT.numericalize("소년는 나를")
-        
+        self.TEXT.build_vocabulary(self.text_list)        
 
         self.transforms = transforms
         self.infer = infer
@@ -156,14 +136,9 @@ class CustomDataset(Dataset):
         else:
             label = self.lable2num[self.label_list[index]]
             return image, torch.Tensor(text_vector).view(-1).to(torch.long), torch.tensor([label],dtype=torch.long),torch.tensor([text_len],dtype=torch.long)
-        
 
-    
     def __len__(self):
         return len(self.all_df)
-          
-
-
 
 train_transform = A.Compose([
                             A.Resize(CFG['IMG_SIZE'],CFG['IMG_SIZE']),
@@ -175,37 +150,38 @@ test_transform = A.Compose([
                             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pixel_value=255.0, always_apply=False, p=1.0),
                             ToTensorV2()
                             ])
-MAX_VOCAB_SIZE = 100000
 
 
 print("데이터셋 구성 중")
-dataset_temp = CustomDataset('./train.csv',MAX_VOCAB_SIZE,train_transform)
+train_all_dataset = CustomDataset('./train.csv',CFG['MAX_VOCAB_SIZE'],train_transform)
+vocab_size = len(train_all_dataset.TEXT.itos)
+label_info = train_all_dataset.lable2num
 print("데이터셋 구성 완료")
+
+dataset_size = len(train_all_dataset)
+train_size = int(dataset_size * CFG['TRAIN_RATE'])
+validation_size = dataset_size - train_size
+
+train_dataset, validation_dataset = random_split(train_all_dataset, [train_size, validation_size])
+
+
 
 class MyCollate:
     def __init__(self, pad_idx):
         self.pad_idx = pad_idx
 
     def __call__(self, batch):
-        # batch_first : 미니 배치 차원을 맨 앞으로 하여 데이터를 불러올 것인지 여부. (False가 기본값)
+        image = [item[0] for item in batch]  
         text = [item[1] for item in batch]  
         text = nn.utils.rnn.pad_sequence(text, batch_first=True, padding_value = self.pad_idx) 
-        
-        image = [item[0] for item in batch]  
         label = [item[2] for item in batch]  
         text_len = [item[3] for item in batch]  
-
         return {"image":torch.stack(image),"text":text,"label":torch.stack(label).squeeze(),"text_len":torch.stack(text_len)}
     
-def get_train_loader(dataset, batch_size, num_workers=0, pin_memory=True):
-    pad_idx = dataset.TEXT.stoi['<pad>']
-    loader = DataLoader(dataset, batch_size = batch_size, num_workers = num_workers,pin_memory=pin_memory, collate_fn = MyCollate(pad_idx=pad_idx))
-    return loader
 
-
-
-
-
+pad_idx = train_all_dataset.TEXT.stoi['<pad>']
+train_loader = DataLoader(train_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_idx))
+validation_loader = DataLoader(validation_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_idx))
     
 
 class CustomModel(nn.Module):
@@ -262,27 +238,26 @@ class CustomModel(nn.Module):
         output = self.classifier(feature)
         return output
 
-print("데이터 로드중 완료")
-train_loader = get_train_loader(dataset_temp, CFG['BATCH_SIZE'])
-print("데이터 로드 완료")
-model = CustomModel(len(dataset_temp.TEXT.stoi),len(dataset_temp.lable2num))
 
-
-
+model = CustomModel(vocab_size,len(label_info))
 model.to(device)
 criterion = nn.CrossEntropyLoss().to(device)
 best_score = 0
 best_model = None
+# optimizer = torch.optim.Adam(params = model.parameters(), lr = CFG["LEARNING_RATE"],weight_decay=1e-4)
 optimizer = torch.optim.Adam(params = model.parameters(), lr = CFG["LEARNING_RATE"])
+# 손실함수에 어떤 제약 조건을 적용해 오버피팅을 최소화하는 방법으로 L1 정형화와 L2 정형화가 있습니다. 오버피팅은 특정 가중치값이 커질수록 발생할 가능성이 높아지므로 이를 해소하기 위해 특정값을 손실함수에 더해주는 것이 정형화 중 가중치 감소(Weight Decay)이며, 더해주는 특정값을 결정하는 것이 L1 정형화와 L2 정형화입니다. 파이토치에서 이 Weight Decay는 다음 코드처럼 적용할 수 있습니다.
+# 결과적으로 weight_decay의 값이 커질수록 가중치 값이 작어지게 되고, 오버피팅 현상을 해소할 수 있지만, weight_decay 값을 너무 크게 하면 언더피팅 현상이 발생하므로 적당한 값을 사용해야 합니다.
 
-data_len = dataset_temp.__len__()
+def score_function(real, pred):
+    return f1_score(real, pred, average="weighted")
+
 
 for epoch in range(1,CFG["EPOCHS"]+1):
     model.train()
-    train_loss = []
-    
-    
-    total_correct = 0
+    train_loss = []   
+    train_data_len = train_dataset.__len__()
+    total_train_correct = 0
     
     for i,data_batch in enumerate(train_loader):
         img = data_batch['image']
@@ -296,132 +271,95 @@ for epoch in range(1,CFG["EPOCHS"]+1):
         text_len = text_len.to(device)
         optimizer.zero_grad()
         
-        model_pred = model(img, text,text_len)
-        
+        model_pred = model(img, text,text_len)        
         loss = criterion(model_pred, label)
         loss.backward()
-        optimizer.step()
-        
-        
+        optimizer.step()                
         _, predicted = torch.max(model_pred, 1) 
-        correct = (predicted == label).sum().item()
-        
-        total_correct += correct
-        
+        correct = (predicted == label).sum().item()        
+        total_train_correct += correct        
         train_loss.append(loss.item())
         
-        print(f'epoch {epoch}/{CFG["EPOCHS"]+1} {(i*CFG["BATCH_SIZE"])+len(label)}/{data_len} train loss {loss.item():.4f} correct : {100*correct/len(label):.2f}% - ({correct}/{len(label)})')
+        print(f'epoch {epoch}/{CFG["EPOCHS"]+1} {(i*CFG["BATCH_SIZE"])+len(label)}/{train_data_len} train loss {loss.item():.4f} acc : {100*correct/len(label):.2f}% - ({correct}/{len(label)})')
         
     tr_loss = np.mean(train_loss)
-    print(f"\n epoch {epoch} end!!! \t train loss : {tr_loss}\t total acc : {100*total_correct/data_len:.2f}% - ({total_correct}/{data_len}) \n")
+    print(f"\n epoch {epoch} train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/train_data_len:.2f}% - ({total_train_correct}/{train_data_len}) \n")
+    
+    
 
-# def train(model, optimizer, train_loader, val_loader, scheduler, device):
-
-#         for img, text, label in tqdm(iter(train_loader)):
-#             img = img.float().to(device)
-#             text = text.to(device)
-#             label = label.to(device)
-            
-#             optimizer.zero_grad()
-
-#             model_pred = model(img, text)
-            
-#             loss = criterion(model_pred, label)
-
-#             loss.backward()
-#             optimizer.step()
-
-#             train_loss.append(loss.item())
-
-#         tr_loss = np.mean(train_loss)
-            
-#         val_loss, val_score = validation(model, criterion, val_loader, device)
-            
-#         print(f'Epoch [{epoch}], Train Loss : [{tr_loss:.5f}] Val Loss : [{val_loss:.5f}] Val Score : [{val_score:.5f}]')
+    
+    
+    val_data_len = validation_dataset.__len__()
+    model.eval()   
+    model_preds = []
+    true_labels = []    
+    val_loss = []    
+    total_val_correct = 0
+    with torch.no_grad():
+        for img, text, label,text_len in validation_loader:
+            img = data_batch['image']
+            text = data_batch['text']
+            label = data_batch['label']
+            text_len = data_batch['text_len']
         
-#         if scheduler is not None:
-#             scheduler.step()
+            img = img.float().to(device)
+            text = text.to(device)
+            label = label.to(device)
+            text_len = text_len.to(device)
             
-#         if best_score < val_score:
-#             best_score = val_score
-#             best_model = model
-    
-#     return best_model
-
-
-
-
-
-# def score_function(real, pred):
-#     return f1_score(real, pred, average="weighted")
-
-# def validation(model, criterion, val_loader, device):
-#     model.eval()
-    
-#     model_preds = []
-#     true_labels = []
-    
-#     val_loss = []
-    
-#     with torch.no_grad():
-#         for img, text, label in tqdm(iter(val_loader)):
-#             img = img.float().to(device)
-#             text = text.to(device)
-#             label = label.to(device)
+            model_pred = model(img, text,text_len)
             
-#             model_pred = model(img, text)
+            loss = criterion(model_pred, label)
             
-#             loss = criterion(model_pred, label)
+            _, predicted = torch.max(model_pred, 1) 
+            correct = (predicted == label).sum().item() 
+            total_val_correct+=correct
+            val_loss.append(loss.item())
             
-#             val_loss.append(loss.item())
-            
-#             model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
-#             true_labels += label.detach().cpu().numpy().tolist()
+            model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
+            true_labels += label.detach().cpu().numpy().tolist()
         
-#     test_weighted_f1 = score_function(true_labels, model_preds)
-#     return np.mean(val_loss), test_weighted_f1
-
-
-
-# model = CustomModel()
-# model.eval()
-# optimizer = torch.optim.Adam(params = model.parameters(), lr = CFG["LEARNING_RATE"])
-# scheduler = None
-
-# infer_model = train(model, optimizer, train_loader, val_loader, scheduler, device)
-
-# test_df = pd.read_csv('./test.csv')
-# test_vectors = vectorizer.transform(test_df['overview'])
-# test_vectors = test_vectors.todense()
-
-
-# test_dataset = CustomDataset(test_df['img_path'].values, test_vectors, None, test_transform, True)
-# test_loader = DataLoader(test_dataset, batch_size=CFG['BATCH_SIZE'], shuffle=False, num_workers=6)
-
-# def inference(model, test_loader, deivce):
-#     model.to(device)
-#     model.eval()
+    test_weighted_f1 = score_function(true_labels, model_preds)
     
-#     model_preds = []
+    print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t f1 score : {test_weighted_f1:.3f} acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
+
     
-#     with torch.no_grad():
-#         for img, text in tqdm(iter(test_loader)):
-#             img = img.float().to(device)
-#             text = text.to(device)
-            
-#             model_pred = model(img, text)
-#             model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
+    writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
+    writer.add_scalars("acc",{"tr_acc":total_train_correct/train_data_len,"val_acc":total_val_correct/val_data_len},epoch)
+    torch.save(model.state_dict(),'./'+str(epoch)+".pth")
     
-#     return model_preds
 
 
 
-# preds = inference(infer_model, test_loader, device)
+test_dataset = CustomDataset('./test.csv',CFG['MAX_VOCAB_SIZE'],test_transform)
+test_loader = DataLoader(test_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_idx))
+    
+model.to(device)
+model.eval()
 
-# submit = pd.read_csv('./sample_submission.csv')
-# submit['cat3'] = le.inverse_transform(preds)
+model_preds = []
 
-# submit.to_csv('./submit.csv', index=False)
+with torch.no_grad():
+    for img, text, label,text_len in test_loader:
+        img = data_batch['image']
+        text = data_batch['text']
+        label = data_batch['label']
+        text_len = data_batch['text_len']
+    
+        img = img.float().to(device)
+        text = text.to(device)
+        label = label.to(device)
+        text_len = text_len.to(device)
+        
+        model_pred = model(img, text,text_len)
+        model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
+
+
+
+submit = pd.read_csv('./sample_submission.csv')
+submit['cat3'] = "dd"
+
+submit.to_csv('./submit.csv', index=False)
 
 
 
