@@ -14,6 +14,12 @@ vit
 - 라벨도 임베딩해서 거리 유사도 구해야됨
 
 
+----------------------------
+트랜스 포머 구조 token max length에 대한 대응 방법
+-> split 하고 결과값을 mean 시킴 
+https://www.youtube.com/watch?v=yDGo9z_RlnE
+
+
 
 
 

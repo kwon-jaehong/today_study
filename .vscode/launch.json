@@ -10,8 +10,9 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true,
-            "cwd": "${fileDirname}"
+            "justMyCode": false,
+            "cwd": "${fileDirname}",
+            "args": ["--data_dir","/data/mrjaehong/handwriting_gen/today_study/transformers/","--model_name_or_path","bert-base-uncased","--output_dir","./output/","--do_train","--do_eval","--max_seq_len","512","--gradient_accumulation_steps","20","--num_image_embeds","3","--num_train_epochs","100","--patience","5"]
             
         }
     ]

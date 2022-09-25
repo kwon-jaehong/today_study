@@ -1,28 +1,15 @@
 import torch.nn as nn
 import torch
-
+from resnet import ResNet,block
 class CustomModel(nn.Module):
     def __init__(self,vocab_size, num_classes):
         super(CustomModel, self).__init__()
         
         self.embedding_dim = 1024
         self.vocab_size = vocab_size
-        # Image
-        self.cnn_extract = nn.Sequential(
-            nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=4, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-        )
         
+        # Image
+        self.image_extract = ResNet(block, [3, 4, 6, 3],image_channels=3)       
 
         
         # Text
@@ -37,7 +24,7 @@ class CustomModel(nn.Module):
             
 
     def forward(self, img, text,text_len):
-        img_feature = self.cnn_extract(img)
+        img_feature = self.image_extract(img)
         img_feature = torch.flatten(img_feature, start_dim=1)
         
         embed = self.bon_embed(text)
