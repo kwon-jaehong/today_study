@@ -10,13 +10,15 @@ import torch.nn as nn
 from model import CustomModel
 from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
+from kobert_tokenizer import KoBERTTokenizer
+
 writer = SummaryWriter('runs/experiment_1')
 
 CFG = {
     'IMG_SIZE':224,
-    'EPOCHS':10,
+    'EPOCHS':2,
     'LEARNING_RATE':3e-4,
-    'BATCH_SIZE':16,
+    'BATCH_SIZE':8,
     'SEED':41,
     'MAX_VOCAB_SIZE':100000,
     'TRAIN_RATE':0.9,
@@ -46,11 +48,10 @@ test_transform = A.Compose([
                             ])
 
 
-
+tokenizer = KoBERTTokenizer.from_pretrained('skt/kobert-base-v1')
 
 print("데이터셋 구성 중")
-train_all_dataset = CustomDataset('./train.csv',CFG['MAX_VOCAB_SIZE'],train_transform)
-vocab_size = len(train_all_dataset.TEXT.itos)
+train_all_dataset = CustomDataset('./train_sample.csv',tokenizer,train_transform)
 label_info = train_all_dataset.lable2num
 print("데이터셋 구성 완료")
 
@@ -62,13 +63,13 @@ validation_size = dataset_size - train_size
 train_dataset, validation_dataset = random_split(train_all_dataset, [train_size, validation_size])
 
 ## 데이터 로더
-pad_idx = train_all_dataset.TEXT.stoi['<pad>']
-train_loader = DataLoader(train_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_idx))
-validation_loader = DataLoader(validation_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_idx))
+pad_token_id = tokenizer.pad_token_id
+train_loader = DataLoader(train_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id))
+validation_loader = DataLoader(validation_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id))
     
     
     
-model = CustomModel(vocab_size,len(label_info))
+model = CustomModel(tokenizer,len(label_info))
 model.to(device)
 criterion = nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(params = model.parameters(), lr = CFG["LEARNING_RATE"])
@@ -85,15 +86,16 @@ for epoch in range(1,CFG["EPOCHS"]+1):
         img = data_batch['image']
         text = data_batch['text']
         label = data_batch['label']
-        text_len = data_batch['text_len']
+        mask = data_batch['mask']
+        
         
         img = img.float().to(device)
         text = text.to(device)
         label = label.to(device)
-        text_len = text_len.to(device)
+        mask = mask.to(device)
         optimizer.zero_grad()
         
-        model_pred = model(img, text,text_len)        
+        model_pred = model(img, text,mask,device)        
         loss = criterion(model_pred, label)
         loss.backward()
         optimizer.step()                
@@ -122,14 +124,14 @@ for epoch in range(1,CFG["EPOCHS"]+1):
             img = data_batch['image']
             text = data_batch['text']
             label = data_batch['label']
-            text_len = data_batch['text_len']
+            mask = data_batch['mask']
         
             img = img.float().to(device)
             text = text.to(device)
             label = label.to(device)
-            text_len = text_len.to(device)
+            mask = mask.to(device)
             
-            model_pred = model(img, text,text_len)
+            model_pred = model(img, text,mask,device) 
             
             loss = criterion(model_pred, label)
             
@@ -149,8 +151,9 @@ for epoch in range(1,CFG["EPOCHS"]+1):
     # torch.save(model.state_dict(),'./'+str(epoch)+".pth")
     
 
-test_dataset = CustomDataset('./test.csv',CFG['MAX_VOCAB_SIZE'],train_all_dataset.TEXT,test_transform,infer=True)
-test_loader = DataLoader(test_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_idx))
+    
+test_dataset = CustomDataset('./test.csv',tokenizer,test_transform,infer=True)
+test_loader = DataLoader(test_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id,infer=True))
     
 model.to(device)
 model.eval()
@@ -163,13 +166,13 @@ with torch.no_grad():
 
         img = data_batch['image']
         text = data_batch['text']
-        text_len = data_batch['text_len']
+        mask = data_batch['mask']
 
         img = img.float().to(device)
         text = text.to(device)
-        text_len = text_len.to(device)
+        mask = mask.to(device)
         
-        model_pred = model(img, text,text_len)
+        model_pred = model(img, text,mask,device) 
         model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
 
 result = []
