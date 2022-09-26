@@ -9,8 +9,9 @@ class CustomModel(nn.Module):
         self.vocab_size = vocab_size
         
         # Image
-        self.image_extract = ResNet(block, [3, 4, 6, 3],image_channels=3)       
-
+        self.image_extract = ResNet(block, [3, 4, 6, 3],image_channels=3)
+        self.avgpool = nn.AdaptiveAvgPool2d((3, 1))
+        
         
         # Text
         self.bon_embed = nn.Embedding(vocab_size,self.embedding_dim,padding_idx=1)
@@ -25,7 +26,12 @@ class CustomModel(nn.Module):
 
     def forward(self, img, text,text_len):
         img_feature = self.image_extract(img)
-        img_feature = torch.flatten(img_feature, start_dim=1)
+        img_feature = self.avgpool(img_feature)
+        img_feature = torch.flatten(img_feature, start_dim=2)
+        img_feature = img_feature.transpose(1, 2).contiguous()
+        # img_feature.shape =  torch.Size([16, 3, 2048])
+        
+        
         
         embed = self.bon_embed(text)
         embed = torch.sum(embed, 1).squeeze(1)

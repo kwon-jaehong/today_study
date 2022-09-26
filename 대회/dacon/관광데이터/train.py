@@ -13,7 +13,7 @@ import pandas as pd
 writer = SummaryWriter('runs/experiment_1')
 
 CFG = {
-    'IMG_SIZE':256,
+    'IMG_SIZE':224,
     'EPOCHS':10,
     'LEARNING_RATE':3e-4,
     'BATCH_SIZE':16,

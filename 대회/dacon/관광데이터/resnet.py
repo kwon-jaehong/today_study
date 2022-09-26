@@ -78,7 +78,9 @@ class ResNet(nn.Module):
             block, layers[3], intermediate_channels=512, stride=2
         )
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+
+        
 
     def forward(self, x):
         x = self.conv1(x)
@@ -90,8 +92,6 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        x = self.avgpool(x)
-        ## 에버리지 풀링까지만
         return x
 
     def _make_layer(self, block, num_residual_blocks, intermediate_channels, stride):
