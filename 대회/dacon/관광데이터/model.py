@@ -88,6 +88,7 @@ class CustomModel(nn.Module):
 
     def forward(self, img, text,mask ,device):
 
+        
         img_token_embeddings = self.image_encoder(img,device)
         
         input_image_shape = img_token_embeddings.size()[:-1]

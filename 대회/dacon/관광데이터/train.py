@@ -16,7 +16,7 @@ writer = SummaryWriter('runs/experiment_1')
 
 CFG = {
     'IMG_SIZE':224,
-    'EPOCHS':2,
+    'EPOCHS':100,
     'LEARNING_RATE':3e-4,
     'BATCH_SIZE':8,
     'SEED':41,
@@ -76,6 +76,7 @@ optimizer = torch.optim.Adam(params = model.parameters(), lr = CFG["LEARNING_RAT
 
 
 
+
 for epoch in range(1,CFG["EPOCHS"]+1):
     model.train()
     train_loss = []   
@@ -95,6 +96,7 @@ for epoch in range(1,CFG["EPOCHS"]+1):
         mask = mask.to(device)
         optimizer.zero_grad()
         
+
         model_pred = model(img, text,mask,device)        
         loss = criterion(model_pred, label)
         loss.backward()

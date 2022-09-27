@@ -1,23 +1,30 @@
-lstm
-
-vit
-
-#######################
-드롭아웃
-렐루 넣어야함
-
-정보 퓨전을 어떻게?
-
-########################
+-----------------------------
 - 대중소 하이러피컬하게 맞춰야함
-  
-- 라벨도 임베딩해서 거리 유사도 구해야됨
+
+계층 분류
+https://github.com/Ugenteraan/Deep_Hierarchical_Classification
+https://pypi.org/project/simple-hierarchy-pytorch/
+https://gitlab.com/artelabsuper/hdlv3
+https://github.com/bcol23/HyperIM
+
+
+
+단어 검색 hierarchical label classification pytorch
+
+
+  다중분류 
+  https://learnopencv.com/multi-label-image-classification-with-pytorch-image-tagging/
+
 
 
 ----------------------------
-트랜스 포머 구조 token max length에 대한 대응 방법
+트랜스 포머 구조 input token max length에 대한 대응 방법
 -> split 하고 결과값을 mean 시킴 
 https://www.youtube.com/watch?v=yDGo9z_RlnE
+----------------------------
+
+버트 파인튜닝 참고 사이트
+https://mccormickml.com/2019/07/22/BERT-fine-tuning/#a1-saving--loading-fine-tuned-model
 
 
 
