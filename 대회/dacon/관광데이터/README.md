@@ -6,7 +6,7 @@ https://github.com/Ugenteraan/Deep_Hierarchical_Classification
 https://pypi.org/project/simple-hierarchy-pytorch/
 https://gitlab.com/artelabsuper/hdlv3
 https://github.com/bcol23/HyperIM
-
+https://github.com/declare-lab/multimodal-deep-learning/tree/main/Low-rank-Multimodal-Fusion
 
 
 단어 검색 hierarchical label classification pytorch

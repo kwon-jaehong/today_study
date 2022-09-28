@@ -2,145 +2,131 @@ import torch.nn as nn
 import torch
 from resnet import ResNet,block
 from transformers import BertModel
-from transformers.modeling_utils import ModuleUtilsMixin
-
+import torch.nn.functional as F
 class imageEmbeddings(nn.Module):
-    def __init__(self,tokenizer,embeddings):
-        super(imageEmbeddings,self).__init__()
-        
-        self.tokenizer = tokenizer
-        
-        ## 버트 임베딩 정보 불러옴
-        self.position_embeddings = embeddings.position_embeddings
-        self.token_type_embeddings = embeddings.token_type_embeddings
-        self.word_embeddings = embeddings.word_embeddings
-        self.LayerNorm = embeddings.LayerNorm
-        self.dropout = nn.Dropout(p=0.1)
-        
-        
+    def __init__(self):
+        super(imageEmbeddings,self).__init__()        
         
         # Image 이미지 레즈넷으로 피쳐 뽑아오고 projection
         self.image_extract = ResNet(block, [3, 4, 6, 3],image_channels=3)
-        self.avgpool = nn.AdaptiveAvgPool2d((3, 1))
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.proj_embeddings = nn.Linear(2048,768) ## 이미지 2048 차원을 projection 시켜 버트 768 차원으로 만듬
-        
-              
-        self.start_token = tokenizer.cls_token_id
-        self.end_token = tokenizer.sep_token_id
-        
-    def forward(self,x,device):
+
+    def forward(self,x):
         
         x = self.image_extract(x)
         x = self.avgpool(x)
         x = torch.flatten(x, start_dim=2)
         x = x.transpose(1, 2).contiguous()
-        # torch.Size([16, 3, 2048]) 토큰 3개 
-        token_embeddings = self.proj_embeddings(x)
-        # torch.Size([16, 3, 768]) 768 차원으로 projcetion 이로써, 텍스트와 차원을 맞추어줌
-        
+        # torch.Size([16, 1, 2048]) 토큰 3개 
+        image_embedding = self.proj_embeddings(x)
+        # torch.Size([16, 1, 768]) 768 차원으로 projcetion함으로써, 텍스트와 차원을 맞추어줌       
 
-                
-        seq_length = token_embeddings.size(1)        
-        batch_size = x.shape[0]
-        # 이미지 앞에 스타트 토큰 부여 (CLS)
-        start_token_embeds = self.word_embeddings(torch.tensor(self.start_token).expand(batch_size).to(device))
-        seq_length += 1
-        token_embeddings = torch.cat([start_token_embeds.unsqueeze(1), token_embeddings], dim=1)
+        return image_embedding
 
-        ## 이미지 뒤에 end 토큰 부여 (SEP)
-        end_token_embeds = self.word_embeddings(torch.tensor(self.end_token).expand(batch_size).to(device))
-        seq_length += 1
-        token_embeddings = torch.cat([token_embeddings, end_token_embeds.unsqueeze(1)], dim=1)
-
-        ## 포지션 임베딩 값
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=device)
-        position_ids = position_ids.unsqueeze(0).expand(batch_size, seq_length)
-        
-        ## 이미지타입 부여 (segmention)
-        token_type_ids = torch.zeros((batch_size, seq_length), dtype=torch.long, device=device)
-        
-        position_embeddings = self.position_embeddings(position_ids)
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
-        embeddings = token_embeddings + position_embeddings + token_type_embeddings
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        
-
-        return embeddings
 
 class CustomModel(nn.Module):
     def __init__(self,tokenizer,num_classes):
         super(CustomModel, self).__init__()
+        self.dropout_p = 0.15
+        self.hidden_dim = 768
+        self.lstm_num_layers = 2
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(self.dropout_p)
+        self.num_classes = num_classes
+        
         self.tokenizer = tokenizer
         
         # text 임베딩용 bert 모델
         self.transformer = BertModel.from_pretrained('skt/kobert-base-v1')
-                
-        # Image
-        self.image_encoder = imageEmbeddings(tokenizer,self.transformer.embeddings)
-        
+        ## kobert 파라미터 freeze
+        for param in self.transformer.parameters():
+            param.requires_grad_(False)
+            
 
-        self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(768, num_classes)
+        self.lstm = nn.LSTM(self.hidden_dim,self.hidden_dim,self.lstm_num_layers,batch_first=True)
+        self.text_bn1 = nn.BatchNorm1d(self.hidden_dim)
+        self.text_bn2 = nn.BatchNorm1d(self.hidden_dim)
+        self.text_bn3 = nn.BatchNorm1d(self.hidden_dim)
+        self.text_fc1 = nn.Linear(self.hidden_dim,self.hidden_dim)
+        self.text_fc2 = nn.Linear(self.hidden_dim,self.hidden_dim)
+        self.text_predict = nn.Linear(self.hidden_dim,num_classes)
+        
+        
+        # Image
+        self.image_encoder = imageEmbeddings()
+        self.image_bn1 = nn.BatchNorm1d(self.hidden_dim)
+        self.image_bn2 = nn.BatchNorm1d(self.hidden_dim)
+        self.image_bn3 = nn.BatchNorm1d(self.hidden_dim)
+        self.image_fc1 = nn.Linear(self.hidden_dim,self.hidden_dim)
+        self.image_fc2 = nn.Linear(self.hidden_dim,self.hidden_dim)
+        self.image_predict = nn.Linear(self.hidden_dim,num_classes)
+
+        
+        
+        
+        ## fusion
+        self.fusion_fc1 = nn.Linear(self.hidden_dim*2,self.hidden_dim)
+        self.fusion_fc2 = nn.Linear(self.hidden_dim,self.hidden_dim)
+        self.fusion_bn1 = nn.BatchNorm1d(self.hidden_dim)
+        self.fusion_bn2 = nn.BatchNorm1d(self.hidden_dim)
+        self.fusion_predict = nn.Linear(self.hidden_dim,num_classes)
+        
+        
+        
+        # self.p_img_bn = nn.BatchNorm1d(self.num_classes)
+        # self.p_text_bn = nn.BatchNorm1d(self.num_classes)
+        # self.p_fusion_bn = nn.BatchNorm1d(self.num_classes)
+        
+        
+        self.final_predict = nn.Linear(self.hidden_dim,num_classes)
+        self.final_bn = nn.BatchNorm1d(num_classes)
+
 
 
             
 
     def forward(self, img, text,mask ,device):
 
+
+        img_embeddings = self.dropout(self.relu(self.image_bn1(self.image_encoder(img).squeeze())))
+        img_f = self.dropout(self.relu(self.image_bn1(self.image_fc1(img_embeddings))))
+        img_f = self.dropout(self.relu(self.image_bn2(self.image_fc2(img_f))))
         
-        img_token_embeddings = self.image_encoder(img,device)
-        
-        input_image_shape = img_token_embeddings.size()[:-1]
+        # img_embeddings.shape = torch.Size([6, 1, 768])
+
 
         ## 텍스트 타입 토큰 선언 및 임베딩
         token_type_ids = torch.ones(text.size(), dtype=torch.long, device=device)   
         txt_embeddings = self.transformer.embeddings(input_ids=text,token_type_ids=token_type_ids)
+        # txt_embeddings.shape =  torch.Size([6, 392, 768])
         
-        ## 둘 정보를 concat       
-        embedding_output = torch.cat([img_token_embeddings, txt_embeddings], axis=1)
-        input_shape = embedding_output.size()[:-1]
+        h0 = torch.zeros(self.lstm_num_layers,text.shape[0],self.hidden_dim).to(device)
+        c0 = torch.zeros(self.lstm_num_layers,text.shape[0],self.hidden_dim).to(device)
         
+        lstm_output,_ = self.lstm(txt_embeddings,(h0,c0))
+        text_f = self.text_fc1(self.dropout(self.relu(self.text_bn1(lstm_output[:,-1,:]))))
+        text_f = self.text_fc2(self.dropout(self.relu(self.text_bn2(text_f))))
         
+        ##
+        fusion_f = torch.cat([img_f, text_f], axis=1)
+        # torch.Size([6, 1536])        
+        fusion_f = self.dropout(self.relu(self.fusion_bn1(self.fusion_fc1(fusion_f))))
+        fusion_f = self.dropout(self.relu(self.fusion_bn2(self.fusion_fc2(fusion_f))))
         
-        attention_mask = torch.cat([torch.ones(input_image_shape, device=device, dtype=torch.long), mask], dim=1)
-        encoder_attention_mask = torch.ones(input_shape, device=device)
+        # torch.Size([6, 768])
         
-        extended_attention_mask = self.get_extended_mask(attention_mask)
-        encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
-        head_mask = [None] * 12
-        
-        
-        
-        encoder_outputs = self.transformer.encoder(
-            embedding_output,
-            attention_mask=extended_attention_mask,
-            head_mask=head_mask,
-            encoder_attention_mask=encoder_extended_attention_mask,
-            return_dict=True,
-        )
-        
-        sequence_output = encoder_outputs[0]
-        # sequence_output = torch.Size([4, 512, 768])
-        
-        pooled_output = self.transformer.pooler(sequence_output)
-        # pooled_output = torch.Size([4, 768])
-        
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
-        
-        
-        return logits
 
-    def get_extended_mask(self,attention_mask):
-        extended_attention_mask = attention_mask[:, None, None, :]
-        extended_attention_mask = extended_attention_mask.to(dtype=torch.float32)
-        extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(torch.float32).min
-        return extended_attention_mask
-    
-    def invert_attention_mask(self,encoder_attention_mask):
-        encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
-        encoder_extended_attention_mask = encoder_extended_attention_mask.to(torch.float32)  # fp16 compatibility
-        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(torch.float32).min
+        
+        # p_img = self.dropout(self.relu(self.p_img_bn(self.image_predict(img_f))))
+        # p_text = self.dropout(self.relu(self.p_text_bn(self.text_predict(text_f))))
+        # p_fusion = self.dropout(self.relu(self.p_fusion_bn(self.fusion_predict(fusion_f))))
+        
+        
+        # fusion_p = torch.cat([p_img,p_text,p_fusion], axis=1)
+        output = self.final_predict(fusion_f)
+        
+        
+        
+        return output
 
-        return encoder_extended_attention_mask

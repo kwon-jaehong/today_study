@@ -146,7 +146,7 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler)
         # print(lr)
             
             print(f'epoch {epoch}/{args.epochs+1} {((i*args.batch_size)+len(label))*args.world_size}/{train_data_len*args.world_size} train loss {loss.item()/args.world_size:.4f} acc : {100*correct/(len(label)*args.world_size):.2f}% - ({correct}/{len(label)*args.world_size})')
-            print(lr)
+            # print(lr)
             
     tr_loss = np.mean(train_loss) / args.world_size
     if(rank==0):
@@ -268,7 +268,7 @@ def trainer(rank, world_size, args):
     
 
     
-    model = DDP(model,device_ids=[rank])
+    model = DDP(model,device_ids=[rank],find_unused_parameters=True)
     
     
     
@@ -311,7 +311,7 @@ def trainer(rank, world_size, args):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch_size', type=int, default=6, metavar='N',
+    parser.add_argument('--batch_size', type=int, default=48, metavar='N',
                         help='input batch size for training (default: 16)')
     
     parser.add_argument('--image_size', type=int, default=224, metavar='N',
@@ -323,7 +323,7 @@ def main():
     parser.add_argument('--numworker', type=int, default=4, metavar='N',
                         help='worker')
     
-    parser.add_argument('--lr', type=float, default=5e-5, metavar='LR',
+    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
                         help='learning rate (default: 0.001)')
     
     parser.add_argument('--gpus', type=int, default=2, metavar='N',
