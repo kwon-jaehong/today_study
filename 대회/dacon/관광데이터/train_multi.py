@@ -96,8 +96,8 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler):
-    if rank == 0:
-        tb_write = SummaryWriter('runs/experiment_1')
+    # if rank == 0:
+    #     tb_write = SummaryWriter('runs/experiment_1')
         
     model.train()
     train_loss = []   
@@ -138,11 +138,12 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler)
         total_train_correct += correct.detach().cpu()
         train_loss.append(loss.item())
         
+        for param_group in optimizer.param_groups:
+            lr = param_group['lr']
         if(rank==0):
             ## 러닝레이트 감소하고 있는거 보려면 주석 해제
-            for param_group in optimizer.param_groups:
-                lr = param_group['lr']
-            # print(lr)
+
+        # print(lr)
             
             print(f'epoch {epoch}/{args.epochs+1} {((i*args.batch_size)+len(label))*args.world_size}/{train_data_len*args.world_size} train loss {loss.item()/args.world_size:.4f} acc : {100*correct/(len(label)*args.world_size):.2f}% - ({correct}/{len(label)*args.world_size})')
             print(lr)
@@ -156,18 +157,18 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler)
         #     lr = param_group['lr']
         # print(f"lr : {lr}")
         
-        tb_write.add_scalar("learing_rate",lr,epoch)
-        tb_write.add_scalar("train_acc",total_train_correct/(train_data_len*args.world_size),epoch)
-        tb_write.add_scalar("train_loss",tr_loss,epoch)
-        tb_write.close()
-        
-        torch.save(model.module.state_dict(), './model.pth')
+        # tb_write.add_scalar("learing_rate",lr,epoch)
+        # tb_write.add_scalar("train_acc",total_train_correct/(train_data_len*args.world_size),epoch)
+        # tb_write.add_scalar("train_loss",tr_loss,epoch)
+        # tb_write.close()
+    return lr,total_train_correct/(train_data_len*args.world_size),tr_loss
+        # torch.save(model.module.state_dict(), './model.pth')
         
         
         
 def val(args, model, validation_loader, epoch, rank,criterion):
-    if rank == 0:
-        tb_write = SummaryWriter('runs/experiment_1')
+    # if rank == 0:
+    #     tb_write = SummaryWriter('runs/experiment_1')
         
     val_data_len = len(validation_loader)*args.batch_size
     model.eval()    
@@ -204,9 +205,10 @@ def val(args, model, validation_loader, epoch, rank,criterion):
         dist.all_reduce(loss, op=dist.ReduceOp.SUM)
         if (rank==0):
             print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss)/args.world_size:.3f} \t acc : {100*total_val_correct/(val_data_len*args.world_size):.2f}% - ({total_val_correct}/{val_data_len*args.world_size}) \n\n")    
-            tb_write.add_scalar("val_acc",total_val_correct/(val_data_len*args.world_size),epoch)
-            tb_write.add_scalar("val_loss",np.mean(val_loss)/args.world_size,epoch)            
-            tb_write.close()
+            # tb_write.add_scalar("val_acc",total_val_correct/(val_data_len*args.world_size),epoch)
+            # tb_write.add_scalar("val_loss",np.mean(val_loss)/args.world_size,epoch)            
+            # tb_write.close()
+        return total_val_correct/(val_data_len*args.world_size),np.mean(val_loss)/args.world_size
 
 def trainer(rank, world_size, args):
     setup(rank, world_size)
@@ -264,23 +266,21 @@ def trainer(rank, world_size, args):
     
     model = CustomModel(tokenizer,len(label_info)).to(rank)
     
-    args.load_model_path = "./temp.pth"
-    if args.load_model_path != None:
-        model.load_state_dict(torch.load(args.load_model_path))
+
     
     model = DDP(model,device_ids=[rank])
     
     
     
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
-    ]
-    optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.lr, eps=1e-8)
+    # no_decay = ["bias", "LayerNorm.weight"]
+    # optimizer_grouped_parameters = [
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+    #         "weight_decay": 0.0,
+    #     },
+    #     {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+    # ]
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=1e-8)
         
     ## 학습할 최종 스텝 계산    
     t_total = len(train_loader) * args.epochs
@@ -292,11 +292,19 @@ def trainer(rank, world_size, args):
 
     criterion = nn.CrossEntropyLoss().to(rank)
     
+    if rank == 0:
+        tb_write = SummaryWriter('runs/experiment_1')
+        
     for epoch in range(1, args.epochs + 1):
         # train(args, model, device, train_loader, optimizer, epoch, rank,criterion,scheduler)
-        train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler)
-        val(args, model, validation_loader, epoch, rank, criterion)
-    
+        lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler)
+        val_acc,val_loss= val(args, model, validation_loader, epoch, rank, criterion)
+        if rank == 0:
+            tb_write.add_scalars("acc",{"train_acc":train_acc,"val_acc":val_acc},epoch)
+            tb_write.add_scalars("loss",{"train_loss":train_loss,"val_loss":val_loss},epoch)
+            tb_write.add_scalar("lr",lr,epoch)        
+    if rank == 0:
+        tb_write.close()
     cleanup()
     
     
@@ -315,7 +323,7 @@ def main():
     parser.add_argument('--numworker', type=int, default=4, metavar='N',
                         help='worker')
     
-    parser.add_argument('--lr', type=float, default=2e-5, metavar='LR',
+    parser.add_argument('--lr', type=float, default=5e-5, metavar='LR',
                         help='learning rate (default: 0.001)')
     
     parser.add_argument('--gpus', type=int, default=2, metavar='N',
