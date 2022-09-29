@@ -60,8 +60,7 @@ class Vocabulary:
         self.stoi = {k:j for j,k in self.itos.items()} 
         self.mecab = mecab
         self.freq_threshold = freq_threshold
-        self.max_size = max_size
-        
+        self.max_size = max_size        
         self.bi_gram =True
     
     def __len__(self):
@@ -242,7 +241,7 @@ class FasttextmultimodalModel(nn.Module):
 
 def trainer(rank, world_size, args):
     setup(rank, world_size)
-    # seed_everything(41) # Seed 고정
+    seed_everything(41) # Seed 고정
     MAX_VOCAB_SIZE = 100000
 
     
@@ -296,7 +295,7 @@ def trainer(rank, world_size, args):
     
     
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-8)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         
     ## 학습할 최종 스텝 계산    
     t_total = len(train_loader) * args.epochs
@@ -304,15 +303,12 @@ def trainer(rank, world_size, args):
     # lr 조금씩 감소시키는 스케줄러
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=t_total)
 
-    
-
     criterion = nn.CrossEntropyLoss().to(rank)
     
     if rank == 0:
-        tb_write = SummaryWriter('runs/experiment_1')
+        tb_write = SummaryWriter('runs/experiment_2')
         
     for epoch in range(1, args.epochs + 1):
-        # train(args, model, device, train_loader, optimizer, epoch, rank,criterion,scheduler)
         lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler)
         val_acc,val_loss= val(args, model, validation_loader, epoch, rank, criterion)
         if rank == 0:
@@ -325,9 +321,7 @@ def trainer(rank, world_size, args):
     
 
 def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler):
-    # if rank == 0:
-    #     tb_write = SummaryWriter('runs/experiment_1')
-        
+
     model.train()
     train_loss = []   
     train_data_len = len(train_loader)*args.batch_size
@@ -352,49 +346,44 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler)
         
         
         optimizer.step()                
-        scheduler.step()
+        # scheduler.step()
         _, predicted = torch.max(model_pred, 1) 
         correct = (predicted == label).sum().item()    
-        correct = torch.tensor(correct,dtype=torch.long).to(rank)
+        # correct = torch.tensor(correct,dtype=torch.long).to(rank)
             
-               
+                       
         
+        # dist.all_reduce(correct, op=dist.ReduceOp.SUM)
+        # dist.all_reduce(loss, op=dist.ReduceOp.SUM)
         
-        dist.all_reduce(correct, op=dist.ReduceOp.SUM)
-        dist.all_reduce(loss, op=dist.ReduceOp.SUM)
-        
-        total_train_correct += correct.detach().cpu()
+        # total_train_correct += correct.detach().cpu()
+        total_train_correct += correct
         train_loss.append(loss.item())
         
         for param_group in optimizer.param_groups:
             lr = param_group['lr']
         if(rank==0):            
-            print(f'epoch {epoch}/{args.epochs+1} {((i*args.batch_size)+len(label))*args.world_size}/{train_data_len*args.world_size} train loss {loss.item()/args.world_size:.4f} acc : {100*correct/(len(label)*args.world_size):.2f}% - ({correct}/{len(label)*args.world_size})')
+            print(f'epoch {epoch}/{args.epochs+1} {((i*args.batch_size)+len(label))}/{train_data_len} train loss {loss.item():.4f} acc : {100*correct/(len(label)):.2f}% - ({correct}/{len(label)})')
             # print(lr)
             
-    tr_loss = np.mean(train_loss) / args.world_size
+    tr_loss = np.mean(train_loss)
     if(rank==0):
             
-        print(f"\nepoch {epoch} train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/(train_data_len*args.world_size):.2f}% - ({total_train_correct}/{train_data_len*args.world_size}) \n")
+        print(f"\nepoch {epoch} train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/(train_data_len):.2f}% - ({total_train_correct}/{train_data_len}) \n")
         
         # for param_group in optimizer.param_groups:
         #     lr = param_group['lr']
         # print(f"lr : {lr}")
-        
-        # tb_write.add_scalar("learing_rate",lr,epoch)
-        # tb_write.add_scalar("train_acc",total_train_correct/(train_data_len*args.world_size),epoch)
-        # tb_write.add_scalar("train_loss",tr_loss,epoch)
-        # tb_write.close()
-    return lr,total_train_correct/(train_data_len*args.world_size),tr_loss
+
+    return lr,total_train_correct/(train_data_len),tr_loss
         # torch.save(model.module.state_dict(), './model.pth')
         
 def val(args, model, validation_loader, epoch, rank,criterion):
-    # if rank == 0:
-    #     tb_write = SummaryWriter('runs/experiment_1')
+
         
     val_data_len = len(validation_loader)*args.batch_size
     model.eval()    
-    val_loss = []    
+    val_total_loss = []    
     total_val_correct = 0
     with torch.no_grad():
         for i,data_batch in enumerate(validation_loader):
@@ -410,46 +399,44 @@ def val(args, model, validation_loader, epoch, rank,criterion):
             
             model_pred = model(img, text,text_len)    
             
-            loss = criterion(model_pred, label)
+            val_loss = criterion(model_pred, label)
             
             _, predicted = torch.max(model_pred, 1) 
-            correct = (predicted == label).sum().item() 
-            total_val_correct+=correct
+            val_correct = (predicted == label).sum().item() 
+
             
-            correct = torch.tensor(correct,dtype=torch.long).to(rank)    
+            # val_correct = torch.tensor(val_correct,dtype=torch.long).to(rank)    
      
-            dist.all_reduce(correct, op=dist.ReduceOp.SUM)
-            dist.all_reduce(loss, op=dist.ReduceOp.SUM)
-            val_loss.append(loss.item())  
-            total_val_correct += correct.detach().cpu()
+            # dist.all_reduce(val_correct, op=dist.ReduceOp.SUM)
+            # dist.all_reduce(val_loss, op=dist.ReduceOp.SUM)
+            val_total_loss.append(val_loss.item())  
+            # total_val_correct += val_correct.detach().cpu()
+            total_val_correct += val_correct
 
 
         
-        dist.all_reduce(loss, op=dist.ReduceOp.SUM)
         if (rank==0):
-            print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss)/args.world_size:.3f} \t acc : {100*total_val_correct/(val_data_len*args.world_size):.2f}% - ({total_val_correct}/{val_data_len*args.world_size}) \n\n")    
-            # tb_write.add_scalar("val_acc",total_val_correct/(val_data_len*args.world_size),epoch)
-            # tb_write.add_scalar("val_loss",np.mean(val_loss)/args.world_size,epoch)            
-            # tb_write.close()
-        return total_val_correct/(val_data_len*args.world_size),np.mean(val_loss)/args.world_size
+            print(f"epoch {epoch} val end!!! val loss : {np.mean(val_total_loss):.3f} \t acc : {100*total_val_correct/(val_data_len):.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
+
+        return total_val_correct/(val_data_len),np.mean(val_total_loss)
 
     
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch_size', type=int, default=96, metavar='N',
+    parser.add_argument('--batch_size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 16)')
     
     parser.add_argument('--image_size', type=int, default=128, metavar='N',
                         help='input image size for training (default: 224)')
     
-    parser.add_argument('--epochs', type=int, default=100, metavar='N',
+    parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train ')
     
     parser.add_argument('--numworker', type=int, default=4, metavar='N',
                         help='worker')
     
-    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
+    parser.add_argument('--lr', type=float, default=3e-4, metavar='LR',
                         help='learning rate (default: 0.001)')
     
     parser.add_argument('--gpus', type=int, default=2, metavar='N',

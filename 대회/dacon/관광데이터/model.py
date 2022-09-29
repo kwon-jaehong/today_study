@@ -28,7 +28,7 @@ class imageEmbeddings(nn.Module):
 class CustomModel(nn.Module):
     def __init__(self,tokenizer,num_classes):
         super(CustomModel, self).__init__()
-        self.dropout_p = 0.5
+        self.dropout_p = 0.1
         self.hidden_dim = 768
         self.lstm_num_layers = 2
         self.relu = nn.ReLU()
