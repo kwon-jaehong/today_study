@@ -28,7 +28,7 @@ class imageEmbeddings(nn.Module):
 class CustomModel(nn.Module):
     def __init__(self,tokenizer,num_classes):
         super(CustomModel, self).__init__()
-        self.dropout_p = 0.15
+        self.dropout_p = 0.5
         self.hidden_dim = 768
         self.lstm_num_layers = 2
         self.relu = nn.ReLU()
@@ -80,7 +80,7 @@ class CustomModel(nn.Module):
         
         
         self.final_predict = nn.Linear(self.hidden_dim,num_classes)
-        self.final_bn = nn.BatchNorm1d(num_classes)
+        # self.final_bn = nn.BatchNorm1d(num_classes)
 
 
 
@@ -89,9 +89,9 @@ class CustomModel(nn.Module):
     def forward(self, img, text,mask ,device):
 
 
-        img_embeddings = self.dropout(self.relu(self.image_bn1(self.image_encoder(img).squeeze())))
-        img_f = self.dropout(self.relu(self.image_bn1(self.image_fc1(img_embeddings))))
-        img_f = self.dropout(self.relu(self.image_bn2(self.image_fc2(img_f))))
+        img_embeddings = self.dropout(self.image_bn1(self.image_encoder(img).squeeze()))
+        img_f = self.dropout(self.image_bn1(self.image_fc1(img_embeddings)))
+        img_f = self.dropout(self.image_bn2(self.image_fc2(img_f)))
         
         # img_embeddings.shape = torch.Size([6, 1, 768])
 
@@ -105,14 +105,14 @@ class CustomModel(nn.Module):
         c0 = torch.zeros(self.lstm_num_layers,text.shape[0],self.hidden_dim).to(device)
         
         lstm_output,_ = self.lstm(txt_embeddings,(h0,c0))
-        text_f = self.text_fc1(self.dropout(self.relu(self.text_bn1(lstm_output[:,-1,:]))))
-        text_f = self.text_fc2(self.dropout(self.relu(self.text_bn2(text_f))))
+        text_f = self.text_fc1(self.dropout(self.text_bn1(lstm_output[:,-1,:])))
+        text_f = self.text_fc2(self.dropout(self.text_bn2(text_f)))
         
         ##
         fusion_f = torch.cat([img_f, text_f], axis=1)
         # torch.Size([6, 1536])        
-        fusion_f = self.dropout(self.relu(self.fusion_bn1(self.fusion_fc1(fusion_f))))
-        fusion_f = self.dropout(self.relu(self.fusion_bn2(self.fusion_fc2(fusion_f))))
+        fusion_f = self.dropout(self.fusion_bn1(self.fusion_fc1(fusion_f)))
+        fusion_f = self.dropout(self.fusion_bn2(self.fusion_fc2(fusion_f)))
         
         # torch.Size([6, 768])
         

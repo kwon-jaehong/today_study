@@ -34,47 +34,6 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 
-   
-    
-
-    
-# test_dataset = CustomDataset('./test.csv',tokenizer,test_transform,infer=True)
-# test_loader = DataLoader(test_dataset, batch_size = CFG['BATCH_SIZE'], num_workers = CFG['NUM_WORKERS'],pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id,infer=True))
-    
-# model.to(device)
-# model.eval()
-
-# model_preds = []
-# count = 0
-# with torch.no_grad():
-#     for data_batch in test_loader:
-#         count  += len(data_batch['image'])
-
-#         img = data_batch['image']
-#         text = data_batch['text']
-#         mask = data_batch['mask']
-
-#         img = img.float().to(device)
-#         text = text.to(device)
-#         mask = mask.to(device)
-        
-#         model_pred = model(img, text,mask,device) 
-#         model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
-
-# result = []
-# for i in model_preds:
-#     result.append(train_all_dataset.num2label[i])
-
-
-# submit = pd.read_csv('./sample_submission.csv')
-# submit['cat3'] = result
-
-# submit.to_csv('./submit.csv', index=False)
-
-
-
-
-
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -195,11 +154,12 @@ def val(args, model, validation_loader, epoch, rank,criterion):
             total_val_correct+=correct
             
             correct = torch.tensor(correct,dtype=torch.long).to(rank)          
+            val_loss.append(loss.item())
             dist.all_reduce(correct, op=dist.ReduceOp.SUM)
             dist.all_reduce(loss, op=dist.ReduceOp.SUM)
             
             total_val_correct += correct.detach().cpu()
-            val_loss.append(loss.item())
+
 
         
         dist.all_reduce(loss, op=dist.ReduceOp.SUM)
@@ -280,7 +240,7 @@ def trainer(rank, world_size, args):
     #     },
     #     {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
     # ]
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, eps=1e-8)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, eps=1e-8)
         
     ## 학습할 최종 스텝 계산    
     t_total = len(train_loader) * args.epochs
