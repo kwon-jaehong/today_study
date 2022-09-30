@@ -13,18 +13,36 @@ import pandas as pd
 from kobert_tokenizer import KoBERTTokenizer
 from torch.optim.lr_scheduler import LambdaLR
 import logging as log
+from torch import Tensor
+from torch import nn
+from torch.nn import functional as F
+from typing import Optional, Sequence
+
 
 log.basicConfig(filename='./log.txt', level=log.DEBUG)
 
 writer = SummaryWriter('runs/experiment_1')
+class FocalLoss(nn.modules.loss._WeightedLoss):
+    def __init__(self, weight=None, gamma=2,reduction='mean'):
+        super(FocalLoss, self).__init__(weight,reduction=reduction)
+        self.gamma = gamma
+        self.weight = weight #weight parameter will act as the alpha parameter to balance class weights
 
+    def forward(self, input, target):
+
+        ce_loss = F.cross_entropy(input, target,reduction=self.reduction,weight=self.weight)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
+        return focal_loss
+    
+    
 CFG = {
     'IMG_SIZE':224,
-    'EPOCHS':10,
+    'EPOCHS':20,
     'LEARNING_RATE':2e-5,
     'BATCH_SIZE':8,
     'SEED':41,
-    'TRAIN_RATE':0.9,
+    'TRAIN_RATE':1,
     'NUM_WORKERS':4
 }
 def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
@@ -83,7 +101,9 @@ validation_loader = DataLoader(validation_dataset, batch_size = CFG['BATCH_SIZE'
     
 model = CustomModel(tokenizer,len(label_info))
 model.to(device)
-criterion = nn.CrossEntropyLoss().to(device)
+criterion = FocalLoss().to(device)
+
+# criterion = nn.CrossEntropyLoss().to(device)
 
 no_decay = ["bias", "LayerNorm.weight"]
 optimizer_grouped_parameters = [
@@ -142,41 +162,41 @@ for epoch in range(1,CFG["EPOCHS"]+1):
 
     
     
-    val_data_len = validation_dataset.__len__()
-    model.eval()   
-    model_preds = []
-    true_labels = []    
-    val_loss = []    
-    total_val_correct = 0
-    with torch.no_grad():
-        for img, text, label,text_len in validation_loader:
-            img = data_batch['image']
-            text = data_batch['text']
-            label = data_batch['label']
-            mask = data_batch['mask']
+    # val_data_len = validation_dataset.__len__()
+    # model.eval()   
+    # model_preds = []
+    # true_labels = []    
+    # val_loss = []    
+    # total_val_correct = 0
+    # with torch.no_grad():
+    #     for img, text, label,text_len in validation_loader:
+    #         img = data_batch['image']
+    #         text = data_batch['text']
+    #         label = data_batch['label']
+    #         mask = data_batch['mask']
         
-            img = img.float().to(device)
-            text = text.to(device)
-            label = label.to(device)
-            mask = mask.to(device)
+    #         img = img.float().to(device)
+    #         text = text.to(device)
+    #         label = label.to(device)
+    #         mask = mask.to(device)
             
-            model_pred = model(img, text,mask,device) 
+    #         model_pred = model(img, text,mask,device) 
             
-            loss = criterion(model_pred, label)
+    #         loss = criterion(model_pred, label)
             
-            _, predicted = torch.max(model_pred, 1) 
-            correct = (predicted == label).sum().item() 
-            total_val_correct+=correct
-            val_loss.append(loss.item())
+    #         _, predicted = torch.max(model_pred, 1) 
+    #         correct = (predicted == label).sum().item() 
+    #         total_val_correct+=correct
+    #         val_loss.append(loss.item())
             
-            model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
-            true_labels += label.detach().cpu().numpy().tolist()
+    #         model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
+    #         true_labels += label.detach().cpu().numpy().tolist()
         
-        print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
-        log.info(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")
+    #     print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
+    #     log.info(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")
     
-    writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
-    writer.add_scalars("acc",{"tr_acc":total_train_correct/train_data_len,"val_acc":total_val_correct/val_data_len},epoch)
+    # writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
+    # writer.add_scalars("acc",{"tr_acc":total_train_correct/train_data_len,"val_acc":total_val_correct/val_data_len},epoch)
     # torch.save(model.state_dict(),'./'+str(epoch)+".pth")
     
 
