@@ -11,19 +11,31 @@ from model import CustomModel
 from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
 from kobert_tokenizer import KoBERTTokenizer
+from torch.optim.lr_scheduler import LambdaLR
+import logging as log
+
+log.basicConfig(filename='./log.txt', level=log.DEBUG)
 
 writer = SummaryWriter('runs/experiment_1')
 
 CFG = {
     'IMG_SIZE':224,
-    'EPOCHS':100,
-    'LEARNING_RATE':3e-4,
+    'EPOCHS':10,
+    'LEARNING_RATE':2e-5,
     'BATCH_SIZE':8,
     'SEED':41,
-    'MAX_VOCAB_SIZE':100000,
     'TRAIN_RATE':0.9,
     'NUM_WORKERS':4
 }
+def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
+    def lr_lambda(current_step: int):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        return max(
+            0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
+        )
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
 def seed_everything(seed):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -51,7 +63,7 @@ test_transform = A.Compose([
 tokenizer = KoBERTTokenizer.from_pretrained('skt/kobert-base-v1')
 
 print("데이터셋 구성 중")
-train_all_dataset = CustomDataset('./train_sample.csv',tokenizer,train_transform)
+train_all_dataset = CustomDataset('./train.csv',tokenizer,train_transform)
 label_info = train_all_dataset.lable2num
 print("데이터셋 구성 완료")
 
@@ -72,7 +84,22 @@ validation_loader = DataLoader(validation_dataset, batch_size = CFG['BATCH_SIZE'
 model = CustomModel(tokenizer,len(label_info))
 model.to(device)
 criterion = nn.CrossEntropyLoss().to(device)
-optimizer = torch.optim.Adam(params = model.parameters(), lr = CFG["LEARNING_RATE"])
+
+no_decay = ["bias", "LayerNorm.weight"]
+optimizer_grouped_parameters = [
+    {
+        "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+        "weight_decay": 0.0,
+    },
+    {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+]
+optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=CFG['LEARNING_RATE'], eps=1e-08)
+    
+## 학습할 최종 스텝 계산    
+t_total = len(train_loader) * CFG['EPOCHS']
+warmup_steps = 0
+# lr 조금씩 감소시키는 스케줄러
+scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=t_total)
 
 
 
@@ -96,21 +123,21 @@ for epoch in range(1,CFG["EPOCHS"]+1):
         mask = mask.to(device)
         optimizer.zero_grad()
         
-
         model_pred = model(img, text,mask,device)        
         loss = criterion(model_pred, label)
         loss.backward()
         optimizer.step()                
+        scheduler.step()
         _, predicted = torch.max(model_pred, 1) 
         correct = (predicted == label).sum().item()        
         total_train_correct += correct        
         train_loss.append(loss.item())
         
         print(f'epoch {epoch}/{CFG["EPOCHS"]+1} {(i*CFG["BATCH_SIZE"])+len(label)}/{train_data_len} train loss {loss.item():.4f} acc : {100*correct/len(label):.2f}% - ({correct}/{len(label)})')
-        
+        log.info(f'epoch {epoch}/{CFG["EPOCHS"]+1} {(i*CFG["BATCH_SIZE"])+len(label)}/{train_data_len} train loss {loss.item():.4f} acc : {100*correct/len(label):.2f}% - ({correct}/{len(label)})')
     tr_loss = np.mean(train_loss)
     print(f"\n epoch {epoch} train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/train_data_len:.2f}% - ({total_train_correct}/{train_data_len}) \n")
-    
+    log.info(f"\n epoch {epoch} train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/train_data_len:.2f}% - ({total_train_correct}/{train_data_len}) \n")
     
 
     
@@ -146,7 +173,7 @@ for epoch in range(1,CFG["EPOCHS"]+1):
             true_labels += label.detach().cpu().numpy().tolist()
         
         print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
-
+        log.info(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")
     
     writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
     writer.add_scalars("acc",{"tr_acc":total_train_correct/train_data_len,"val_acc":total_val_correct/val_data_len},epoch)
