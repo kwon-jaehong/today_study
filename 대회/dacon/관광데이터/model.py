@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from resnet import ResNet,block
 from transformers import BertModel
-from transformers.modeling_utils import ModuleUtilsMixin
+
 
 class imageEmbeddings(nn.Module):
     def __init__(self,tokenizer,embeddings):
@@ -69,8 +69,13 @@ class imageEmbeddings(nn.Module):
         return embeddings
 
 class CustomModel(nn.Module):
-    def __init__(self,tokenizer,num_classes):
+    def __init__(self,tokenizer,num_cat1_classes,num_cat2_classes,num_cat3_classes):
         super(CustomModel, self).__init__()
+        
+        self.num_cat1_classes = num_cat1_classes
+        self.num_cat2_classes = num_cat2_classes
+        self.num_cat3_classes = num_cat3_classes
+        
         self.tokenizer = tokenizer
         
         # text 임베딩용 bert 모델
@@ -81,9 +86,52 @@ class CustomModel(nn.Module):
         
 
         self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(768, num_classes)
+        self.classifier = nn.Linear(768, num_cat3_classes)
 
-
+        self.coarse1_pred = nn.Sequential(
+            nn.Linear(768,256),
+            nn.BatchNorm1d(256),
+            self.dropout,
+            nn.Linear(256,256),
+            nn.BatchNorm1d(256),
+            self.dropout,
+            nn.Linear(256,self.num_cat1_classes)                
+        )
+        self.coarse2_pred = nn.Sequential(
+            nn.Linear(768,512),
+            nn.BatchNorm1d(512),
+            self.dropout,
+            nn.Linear(512,512),
+            nn.BatchNorm1d(512),
+            self.dropout,
+            nn.Linear(512,self.num_cat2_classes)                
+        )
+        self.fine_pred = nn.Sequential(
+            nn.Linear(768,1024),
+            nn.BatchNorm1d(1024),
+            self.dropout,
+            nn.Linear(1024,1024),
+            nn.BatchNorm1d(1024),
+            self.dropout,
+            nn.Linear(1024,self.num_cat3_classes)                
+        )
+            
+        self.expand_1_2 = nn.Sequential(
+            nn.Linear(self.num_cat1_classes,256),
+            nn.BatchNorm1d(256),
+            nn.Linear(256,self.num_cat2_classes),
+            nn.BatchNorm1d(self.num_cat2_classes),
+            nn.ReLU(),
+        )
+        
+        self.expand_2_f = nn.Sequential(
+            nn.Linear(self.num_cat2_classes,512),
+            nn.BatchNorm1d(512),
+            nn.Linear(512,self.num_cat3_classes),
+            nn.BatchNorm1d(self.num_cat3_classes),
+            nn.ReLU(),
+        )
+            
             
 
     def forward(self, img, text,mask ,device):
@@ -123,13 +171,32 @@ class CustomModel(nn.Module):
         # sequence_output = torch.Size([4, 512, 768])
         
         pooled_output = self.transformer.pooler(sequence_output)
-        # pooled_output = torch.Size([4, 768])
+        # pooled_output = torch.Size([4, 768])       
         
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
+        coarse1_pred = self.coarse1_pred(pooled_output)
+        weight_1_2 = self.expand_1_2(coarse1_pred)
         
         
-        return logits
+        coarse2_pred = self.coarse2_pred(pooled_output)
+        coarse2_pred_attention = torch.mul(coarse2_pred,weight_1_2)
+        weight_2_f = self.expand_2_f(coarse2_pred_attention)
+        
+        
+        fine_pred = self.fine_pred(pooled_output)
+        fine_pred = torch.mul(fine_pred,weight_2_f)
+        
+        
+        
+        return coarse1_pred,coarse2_pred,fine_pred
+        # pooled_output = self.dropout(pooled_output)
+        
+        
+        
+        
+        # logits = self.classifier(pooled_output)
+        
+        
+        # return logits
 
     def get_extended_mask(self,attention_mask):
         extended_attention_mask = attention_mask[:, None, None, :]

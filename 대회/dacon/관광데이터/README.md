@@ -7,17 +7,15 @@ https://www.youtube.com/watch?v=CU2GF0du36o&t=1s
 - 대중소 하이러피컬하게 맞춰야함
 
 계층 분류
-https://pypi.org/project/simple-hierarchy-pytorch/
-https://github.com/bcol23/HyperIM
 https://arxiv.org/pdf/1709.09890.pdf
 https://github.com/AdicherlaVenkataSai/HCNN/blob/master/VGG19HCNN.ipynb
 https://github.com/Ugenteraan/Deep_Hierarchical_Classification
 
 단어 검색 hierarchical label classification pytorch
-구글 학술 B-CNN 타고 
+구글 학술 B-CNN 타고  hierarchical classification deep learning
 B-CNN: branch convolutional neural network for hierarchical classification
 
-
+paperswi : Hierarchical Multi-label Classification
 
 
   다중분류 
