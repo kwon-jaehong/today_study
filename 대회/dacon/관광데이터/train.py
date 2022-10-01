@@ -38,11 +38,11 @@ class FocalLoss(nn.modules.loss._WeightedLoss):
     
 CFG = {
     'IMG_SIZE':224,
-    'EPOCHS':20,
+    'EPOCHS':10,
     'LEARNING_RATE':2e-5,
     'BATCH_SIZE':8,
     'SEED':41,
-    'TRAIN_RATE':1,
+    'TRAIN_RATE':0.9,
     'NUM_WORKERS':4
 }
 def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
@@ -162,42 +162,42 @@ for epoch in range(1,CFG["EPOCHS"]+1):
 
     
     
-    # val_data_len = validation_dataset.__len__()
-    # model.eval()   
-    # model_preds = []
-    # true_labels = []    
-    # val_loss = []    
-    # total_val_correct = 0
-    # with torch.no_grad():
-    #     for img, text, label,text_len in validation_loader:
-    #         img = data_batch['image']
-    #         text = data_batch['text']
-    #         label = data_batch['label']
-    #         mask = data_batch['mask']
+    val_data_len = validation_dataset.__len__()
+    model.eval()   
+    model_preds = []
+    true_labels = []    
+    val_loss = []    
+    total_val_correct = 0
+    with torch.no_grad():
+        for img, text, label,text_len in validation_loader:
+            img = data_batch['image']
+            text = data_batch['text']
+            label = data_batch['label']
+            mask = data_batch['mask']
         
-    #         img = img.float().to(device)
-    #         text = text.to(device)
-    #         label = label.to(device)
-    #         mask = mask.to(device)
+            img = img.float().to(device)
+            text = text.to(device)
+            label = label.to(device)
+            mask = mask.to(device)
             
-    #         model_pred = model(img, text,mask,device) 
+            model_pred = model(img, text,mask,device) 
             
-    #         loss = criterion(model_pred, label)
+            loss = criterion(model_pred, label)
             
-    #         _, predicted = torch.max(model_pred, 1) 
-    #         correct = (predicted == label).sum().item() 
-    #         total_val_correct+=correct
-    #         val_loss.append(loss.item())
+            _, predicted = torch.max(model_pred, 1) 
+            correct = (predicted == label).sum().item() 
+            total_val_correct+=correct
+            val_loss.append(loss.item())
             
-    #         model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
-    #         true_labels += label.detach().cpu().numpy().tolist()
+            model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
+            true_labels += label.detach().cpu().numpy().tolist()
         
-    #     print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
-    #     log.info(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")
+        print(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")    
+        log.info(f"epoch {epoch} val end!!! val loss : {np.mean(val_loss):.3f} \t acc : {100*total_val_correct/val_data_len:.2f}% - ({total_val_correct}/{val_data_len}) \n\n")
     
-    # writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
-    # writer.add_scalars("acc",{"tr_acc":total_train_correct/train_data_len,"val_acc":total_val_correct/val_data_len},epoch)
-    # torch.save(model.state_dict(),'./'+str(epoch)+".pth")
+    writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
+    writer.add_scalars("acc",{"tr_acc":total_train_correct/train_data_len,"val_acc":total_val_correct/val_data_len},epoch)
+    torch.save(model.state_dict(),'./'+str(epoch)+".pth")
     
 
     
