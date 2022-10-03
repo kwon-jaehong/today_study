@@ -19,9 +19,9 @@ from torch.nn import functional as F
 from typing import Optional, Sequence
 
 
-log.basicConfig(filename='./log.txt', level=log.DEBUG)
+log.basicConfig(filename='./log_1.txt', level=log.DEBUG)
 
-writer = SummaryWriter('runs/experiment_1')
+writer = SummaryWriter('runs/g1_experiment_1')
 class FocalLoss(nn.modules.loss._WeightedLoss):
     def __init__(self, weight=None, gamma=2,reduction='mean'):
         super(FocalLoss, self).__init__(weight,reduction=reduction)
@@ -41,7 +41,7 @@ class FocalLoss(nn.modules.loss._WeightedLoss):
     
 CFG = {
     'IMG_SIZE':224,
-    'EPOCHS':10,
+    'EPOCHS':20,
     'LEARNING_RATE':2e-5,
     'BATCH_SIZE':6,
     'SEED':41,
@@ -66,7 +66,9 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
 seed_everything(CFG['SEED']) # Seed 고정
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+
+device = torch.device('cuda:1') if torch.cuda.is_available() else torch.device('cpu')
 
 
 train_transform = A.Compose([
@@ -202,9 +204,6 @@ for epoch in range(1,CFG["EPOCHS"]+1):
     total_val_correct_cat3 = 0
     with torch.no_grad():
         for i,data_batch in enumerate(validation_loader):
-            print(f'검증중...{i}')
-            if i==283:
-                print('엣헴')
             img = data_batch['image']
             text = data_batch['text']
             cat1 = data_batch['label_1']
@@ -251,7 +250,7 @@ for epoch in range(1,CFG["EPOCHS"]+1):
     
     writer.add_scalars("loss",{"tr_loss":tr_loss,"val loss":np.mean(val_loss)},epoch)
     writer.add_scalars("acc",{"tr_acc":total_train_correct_cat3/train_data_len,"val_acc":total_val_correct_cat3/val_data_len},epoch)
-    torch.save(model.state_dict(),'./'+str(epoch)+".pth")
+    torch.save(model.state_dict(),'./save_model/'+str(epoch)+"_g1_"+".pth")
     
 
     
@@ -286,4 +285,4 @@ for i in model_preds:
 submit = pd.read_csv('./sample_submission.csv')
 submit['cat3'] = result
 
-submit.to_csv('./submit.csv', index=False)
+submit.to_csv('./g1_submit.csv', index=False)

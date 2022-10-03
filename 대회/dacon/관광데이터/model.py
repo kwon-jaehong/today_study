@@ -85,7 +85,7 @@ class CustomModel(nn.Module):
         self.image_encoder = imageEmbeddings(tokenizer,self.transformer.embeddings)
         
 
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.3)
         self.classifier = nn.Linear(768, num_cat3_classes)
 
         self.coarse1_pred = nn.Sequential(
@@ -119,6 +119,7 @@ class CustomModel(nn.Module):
         self.expand_1_2 = nn.Sequential(
             nn.Linear(self.num_cat1_classes,256),
             nn.BatchNorm1d(256),
+            nn.ReLU(),
             nn.Linear(256,self.num_cat2_classes),
             nn.BatchNorm1d(self.num_cat2_classes),
             nn.ReLU(),
@@ -127,6 +128,7 @@ class CustomModel(nn.Module):
         self.expand_2_f = nn.Sequential(
             nn.Linear(self.num_cat2_classes,512),
             nn.BatchNorm1d(512),
+            nn.ReLU(),
             nn.Linear(512,self.num_cat3_classes),
             nn.BatchNorm1d(self.num_cat3_classes),
             nn.ReLU(),
