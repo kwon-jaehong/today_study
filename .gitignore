@@ -8,6 +8,7 @@ dataset/
 *.pth*
 *runs*
 *.pkl*
+*__pycache__*
 
 대회/dacon/관광데이터/텐서보드저장
 대회/dacon/관광데이터/multimodal-deep-learning
