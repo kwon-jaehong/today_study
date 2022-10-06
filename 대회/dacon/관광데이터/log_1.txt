@@ -1,9 +1,0 @@
-DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): huggingface.co:443
-DEBUG:urllib3.connectionpool:https://huggingface.co:443 "HEAD /skt/kobert-base-v1/resolve/main/spiece.model HTTP/1.1" 200 0
-DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): huggingface.co:443
-DEBUG:urllib3.connectionpool:https://huggingface.co:443 "HEAD /skt/kobert-base-v1/resolve/main/config.json HTTP/1.1" 200 0
-INFO:root:epoch 1/21 6/15287 train loss 9.1795 cat1_acc : 33.33% - (2/6) cat2_acc : 0.00% - (0/6) cat3_acc : 0.00% - (0/6)
-INFO:root:epoch 1/21 12/15287 train loss 8.9892 cat1_acc : 16.67% - (1/6) cat2_acc : 16.67% - (1/6) cat3_acc : 0.00% - (0/6)
-INFO:root:epoch 1/21 18/15287 train loss 8.8027 cat1_acc : 16.67% - (1/6) cat2_acc : 16.67% - (1/6) cat3_acc : 0.00% - (0/6)
-INFO:root:epoch 1/21 24/15287 train loss 10.1009 cat1_acc : 0.00% - (0/6) cat2_acc : 0.00% - (0/6) cat3_acc : 0.00% - (0/6)
-INFO:root:epoch 1/21 30/15287 train loss 8.7883 cat1_acc : 33.33% - (2/6) cat2_acc : 0.00% - (0/6) cat3_acc : 0.00% - (0/6)
