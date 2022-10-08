@@ -1,0 +1,24 @@
+defaults:
+  - override hydra/sweeper: optuna
+  - override hydra/sweeper/sampler: tpe
+
+hydra:
+  sweeper:
+    sampler:
+      seed: 123
+    direction: minimize
+    study_name: simple_objective
+    storage: null
+    n_trials: 20
+    n_jobs: 1
+
+    params:
+      x: range(-5.5, 5.5, 0.5)
+      y: choice(-5, 0, 5)
+      z: int(tag(log, interval(1, 32)))
+
+train_loader_path : "./train.csv"
+## 따로 선언해줘야함 잇긴 있어야 하니까
+x: 0
+y: 0
+z: 0

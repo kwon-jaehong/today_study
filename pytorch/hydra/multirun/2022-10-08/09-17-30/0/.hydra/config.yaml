@@ -1,0 +1,4 @@
+train_loader_path: ./train.csv
+x: 2.5
+'y': 5
+z: 10

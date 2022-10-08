@@ -1,0 +1,17 @@
+processed_data:
+  text:
+    train: data/processed/train_text.txt
+    val: data/processed/val_text.txt
+    test: data/processed/test_text.txt
+  label:
+    train: data/processed/train_label.txt
+    val: data/processed/val_label.txt
+mlflow:
+  experiment_name: agressive
+GridSearchCV:
+  scoring: f1_macro
+  cv: 5
+  n_jobs: 4
+metrics:
+  score: metrics.f1_score
+  average: macro
