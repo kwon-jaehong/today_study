@@ -10,7 +10,6 @@ import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -19,6 +18,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from sklearn.metrics import f1_score
 from torch.nn import functional as F
 import mlflow
+
 
 
 def seed_everything(seed):
@@ -296,11 +296,12 @@ def trainer(rank, world_size, args):
         pass
 
         
-    for epoch in range(1, args.epochs + 1):
-        lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler)
-        val_acc,val_loss= val(args, model, validation_loader, epoch, rank, criterion)
-        if rank == 0:
-            pass
+    # for epoch in range(1, args.epochs + 1):
+    #     lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler)
+    #     val_acc,val_loss= val(args, model, validation_loader, epoch, rank, criterion)
+    #     if rank == 0:
+    #         pass
+
 
 
     cleanup()
@@ -349,6 +350,8 @@ def main():
       
     mp.spawn(trainer, args=(world_size, args), nprocs=world_size, join=True)
     
+
+    # return 뭔값이 들어가야 val loss가 최소인걸 알지
     
 if __name__ == '__main__':
     main()
