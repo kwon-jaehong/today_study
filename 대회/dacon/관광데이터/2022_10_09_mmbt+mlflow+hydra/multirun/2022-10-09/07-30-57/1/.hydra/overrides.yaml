@@ -1,4 +1,0 @@
-- main_model_drop_out_p=0.5
-- image_encoder_drop_out_p=0.35000000000000003
-- resnet_choice=0
-- image_token_size=13
