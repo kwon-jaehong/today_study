@@ -1,5 +1,0 @@
-mlflow:
-  experiment_name: agressive
-parameters:
-  batch: 12
-  drop: 0.2

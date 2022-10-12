@@ -1,0 +1,7 @@
+name: optuna
+best_params:
+  x: 2.5
+  'y': 5
+  z: 10
+  para.eddz: -1.0
+best_value: 1.0

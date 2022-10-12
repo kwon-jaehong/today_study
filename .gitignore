@@ -13,3 +13,9 @@ dataset/
 대회/dacon/관광데이터/multimodal-deep-learning
 transformers/
 *mlruns*
+*temp*
+*.log*
+hydra.yaml
+overrides.yaml
+.hydra
+*.tar
