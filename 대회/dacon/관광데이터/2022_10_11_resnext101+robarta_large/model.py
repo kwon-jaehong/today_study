@@ -96,7 +96,7 @@ class CustomModel(nn.Module):
         
         # text 임베딩용 bert 모델
         # self.transformer = AutoModel.from_pretrained("klue/roberta-large",cache_dir="./temp")
-        self.transformer = AutoModel.from_pretrained('klue/roberta-large',cache_dir="./temp")
+        self.transformer = AutoModel.from_pretrained('klue/roberta-base',cache_dir="./temp")
 
         ## 메인 트랜스포머 모델의 token dim 구해옴
         

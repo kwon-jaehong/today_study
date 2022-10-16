@@ -1,4 +1,4 @@
-from http import client
+
 import random
 import torch
 import os
@@ -10,7 +10,7 @@ from omegaconf import DictConfig
 import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf,open_dict
-
+from mlflow.entities import Param
 from mlflow.tracking import MlflowClient
 from mlflow.utils.mlflow_tags import MLFLOW_PARENT_RUN_ID,MLFLOW_RUN_NAME
 
@@ -48,9 +48,7 @@ def trainer(rank, gpus, args):
     
     if rank ==0:
         mlflow_client = MlflowClient()
-        mlflow_run = mlflow_client.create_run(experiment_id='0')
-        
-        mlflow_run.info
+        mlflow_run = mlflow_client.create_run(experiment_id='0',tags={MLFLOW_RUN_NAME:"실험네임"})
         mlflow_run_id = mlflow_run.info.run_id
 
     
@@ -59,9 +57,8 @@ def trainer(rank, gpus, args):
         val_acc= val(2)
         
         if rank == 0:
-            client.log_params(mlflow_run_id,{"temp":0.1})       
-            client.log_params(mlflow_run_id,{"temp":0.1})    
-            # mlflow.log_metric("lr",lr,epoch)      
+            mlflow_client.log_param(mlflow_run_id,"temp",0.1)  
+            # mlflow.log_metric("eoeo",10,1) # 이렇게는 안됨
 
 
     cleanup()

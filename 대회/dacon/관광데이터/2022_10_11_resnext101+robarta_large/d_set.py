@@ -8,31 +8,21 @@ import os
 
     
 class CustomDataset(Dataset):
-    def __init__(self,csv_path,tokenizer,transforms,infer=False):
-        self.tokenizer = tokenizer
-        
-        self.all_df = pd.read_csv(csv_path)        
-        
+    def __init__(self,df,csv_path,tokenizer,transforms,label_2_num,infer=False):
+        self.tokenizer = tokenizer        
+        self.df = df             
+        self.label_2_num = label_2_num
         
         # 텍스트속 html 문법 제거
-        self.text_list = list(self.all_df['overview'])
+        self.text_list = list(self.df['overview'])
         for i,text in enumerate(self.text_list):
             self.text_list[i] = self.cleanhtml(text)
         
         data_dir_name,_ = os.path.split(csv_path)
-        self.img_path_list = [os.path.join(data_dir_name,pt[2:]) for pt in list(self.all_df['img_path'])]
-        
+        self.img_path_list = [os.path.join(data_dir_name,pt[2:]) for pt in list(self.df['img_path'])]        
         
         if infer==False:
-            self.label_level_list_3 = list(self.all_df['cat3'])
-            
-            set_level_list_3 = list(set(self.label_level_list_3))
-            
-            set_level_list_3.sort()            
-            
-            self.num2label_3_level = {i:label for i,label in enumerate(set_level_list_3)}
-            self.label_3_level_2num = {label:i for i,label in enumerate(set_level_list_3)}
-        
+            self.label_level_list_3 = list(self.df['cat3'])      
          
 
         self.transforms = transforms
@@ -63,11 +53,11 @@ class CustomDataset(Dataset):
             return image, torch.Tensor(text_token).view(-1).to(torch.long)
         else:
 
-            label_3_level = self.label_3_level_2num[self.label_level_list_3[index]]
+            label_3_level = self.label_2_num[self.label_level_list_3[index]]
             return image, torch.Tensor(text_token).view(-1).to(torch.long), torch.tensor([label_3_level],dtype=torch.long)
 
     def __len__(self):
-        return len(self.all_df)
+        return len(self.df)
     
     def cleanhtml(self,raw_html):
         cleanr = re.compile('<.*?>|&([a-z0-9]+|#[0-9]{1,6}|#x[0-9a-f]{1,6});')

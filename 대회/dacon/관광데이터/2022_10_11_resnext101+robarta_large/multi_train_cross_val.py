@@ -1,4 +1,4 @@
-from linecache import cache
+import pandas as pd
 from d_set import CustomDataset,MyCollate
 from model import CustomModel
 import random
@@ -8,7 +8,7 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -17,14 +17,16 @@ from torch.optim.lr_scheduler import LambdaLR
 from sklearn.metrics import f1_score
 from torch.nn import functional as F
 import pickle
-import mlflow
 from omegaconf import DictConfig
 import hydra
-from transformers import ElectraForPreTraining, ElectraTokenizer
-from transformers import BartTokenizer, BartModel
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf,open_dict
+from mlflow.tracking import MlflowClient
+from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
+from sklearn.model_selection import StratifiedKFold
+import numpy as np
+
 
 def seed_everything(seed):
     random.seed(seed)
@@ -84,7 +86,7 @@ class FocalLoss(nn.modules.loss._WeightedLoss):
         
         return focal_loss
     
-def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler):        
+def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,k_n):        
     model.train()
     train_loss_list = []   
     train_data_len = len(train_loader)*args.parameters_.batch_size
@@ -109,6 +111,8 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler)
         train_loss = criterion(model_pred, train_label)
         train_loss.backward()
         
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
         
         optimizer.step()                
         scheduler.step()
@@ -118,40 +122,33 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler)
         
         
         dist.all_reduce(train_correct, op=dist.ReduceOp.SUM)
-        # print("\n 각각 loss",rank," loss : ",loss.item(),"\n")
         dist.all_reduce(train_loss, op=dist.ReduceOp.SUM)
-        # print("\n 합친후 ",rank," loss : ",loss,"\n")
-        
-        # val이랑 train 변수 바꾸자
-        
+
+                
         total_train_correct += train_correct.detach().cpu()
         train_loss_list.append(train_loss.item())
         
         for param_group in optimizer.param_groups:
             lr = param_group['lr']
-        if(rank==0):
-
-        # print(lr)
             
-            print(f'epoch {epoch}/{args.env_.epochs} {((i*args.parameters_.batch_size)+len(train_label.view(-1)))*args.env_.gpus}/{train_data_len*args.env_.gpus} train loss {train_loss.item()/args.env_.gpus:.4f} acc : {100*train_correct/(len(train_label.view(-1))*args.env_.gpus):.2f}% - ({train_correct}/{len(train_label.view(-1))*args.env_.gpus})')
-            # print(lr)
-            # print(f'epoch {epoch}/{args.epochs} {((i*args.batch_size)+len(train_label.view(-1)))*args.gpus}/{train_data_len*args.gpus} train loss {train_loss.item()/args.gpus:.4f} acc : {100*train_correct/(len(train_label.view(-1))*args.gpus):.2f}% - ({train_correct}/{len(train_label.view(-1))*args.gpus})')
-          
+        if(rank==0):            
+            print(f'{k_n}_fold {epoch}/{args.env_.epochs} epoch {((i*args.parameters_.batch_size)+len(train_label.view(-1)))*args.env_.gpus}/{train_data_len*args.env_.gpus} train loss {train_loss.item()/args.env_.gpus:.4f} acc : {100*train_correct/(len(train_label.view(-1))*args.env_.gpus):.2f}% - ({train_correct}/{len(train_label.view(-1))*args.env_.gpus})')
+   
             
     tr_loss = np.mean(train_loss_list) / args.env_.gpus
     if(rank==0):
-        print(f"\nepoch {epoch} train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/(train_data_len*args.env_.gpus):.2f}% - ({total_train_correct}/{train_data_len*args.env_.gpus}) \n")
+        print(f"\n{k_n}_fold {epoch} epoch train end!!! \t train batch loss : {tr_loss:.4f}\t total acc : {100*total_train_correct/(train_data_len*args.env_.gpus):.2f}% - ({total_train_correct}/{train_data_len*args.env_.gpus}) \n")
         
         for param_group in optimizer.param_groups:
             lr = param_group['lr']
-        # print(f"lr : {lr}")
+
         
         # torch.save(model.module.state_dict(), './'+str(epoch)+'.pth')
         
     return lr,total_train_correct/(train_data_len*args.env_.gpus),tr_loss   
         
-def val(args, model, validation_loader, epoch, rank,criterion):        
-    val_data_len = len(validation_loader)*args.env_.gpus
+def val(args, model, validation_loader, epoch, rank,criterion,k_n):        
+    val_data_len = len(validation_loader)*args.parameters_.batch_size
     model.eval()    
     val_total_loss = []    
     total_val_correct = 0
@@ -217,7 +214,7 @@ def val(args, model, validation_loader, epoch, rank,criterion):
         if (rank==0):
             weighted_f1 = score_function(rank_root_true.detach().cpu().numpy().tolist(), rank_root_preds.detach().cpu().numpy().tolist())
 
-            print(f"epoch {epoch} val end!!! val loss : {np.mean(val_total_loss)/args.env_.gpus:.3f} \t f1 score : {weighted_f1:.2f} \t acc : {100*total_val_correct/(val_data_len*args.env_.gpus):.2f}% - ({total_val_correct}/{val_data_len*args.env_.gpus}) \n\n")    
+            print(f"{k_n}_fold {epoch} val end!!! val loss : {np.mean(val_total_loss)/args.env_.gpus:.3f} \t f1 score : {weighted_f1:.2f} \t acc : {100*total_val_correct/(val_data_len*args.env_.gpus):.2f}% - ({total_val_correct}/{val_data_len*args.env_.gpus}) \n\n")    
         return total_val_correct/(val_data_len*args.env_.gpus),np.mean(val_total_loss)/args.env_.gpus,weighted_f1
     
 
@@ -225,9 +222,23 @@ def trainer(rank, gpus, args):
 
     setup(rank, gpus)
     seed_everything(41) # Seed 고정
-
-
     
+
+
+    if rank ==0:
+        mlflow_client = MlflowClient()
+        train_acc_list = [ [] for x in range(args.env_.k_fold_n) ]
+        train_loss_list = [ [] for x in range(args.env_.k_fold_n) ]
+        val_acc_list = [ [] for x in range(args.env_.k_fold_n) ]
+        val_loss_list = [ [] for x in range(args.env_.k_fold_n) ]
+        f1_socre_list = [ [] for x in range(args.env_.k_fold_n) ]
+        mlflow_run = mlflow_client.create_run(experiment_id='0',tags={MLFLOW_RUN_NAME:args.env_.job_name})
+        mlflow_run_id = mlflow_run.info.run_id   
+        mlflow_client.log_dict(mlflow_run_id,dict(args.env_),"env.yaml")
+        for key,value in dict(args.parameters_).items():
+            mlflow_client.log_param(mlflow_run_id,key,value)
+
+
 
     train_transform = A.Compose([
                             A.Resize(args.env_.image_size,args.env_.image_size),
@@ -235,87 +246,126 @@ def trainer(rank, gpus, args):
                             ToTensorV2()
                             ])
 
-    tokenizer = AutoTokenizer.from_pretrained("klue/roberta-large",cache_dir="./temp")
-    # tokenizer =  AutoTokenizer.from_pretrained('BM-K/KoSimCSE-bert-multitask',cache_dir="./temp")
+    tokenizer = AutoTokenizer.from_pretrained("klue/roberta-base",cache_dir="./temp")
+
     
+    ## 라벨링 cat3를 dict로 작업
+    df = pd.read_csv(args.env_.train_path)
+    set_level_list_3 = list(set(list(df['cat3'])))
+    set_level_list_3.sort()            
+    # self.num2label_3_level = {i:label for i,label in enumerate(set_level_list_3)}
+    label_info= {label:i for i,label in enumerate(set_level_list_3)}
 
-    train_all_dataset = CustomDataset(args.env_.train_path,tokenizer,train_transform)
-    label_info = train_all_dataset.label_3_level_2num
+
+    ## df에 k폴드 번호 지정
+    folds = StratifiedKFold(n_splits=args.env_.k_fold_n, random_state=42, shuffle=True)
+    df['kfold'] = -1
+    for i in range(args.env_.k_fold_n):
+        df_idx, valid_idx = list(folds.split(df.values, df['cat3']))[i]
+        valid = df.iloc[valid_idx]
+        df.loc[df[df.id.isin(valid.id) == True].index.to_list(), 'kfold'] = i
 
 
 
-    dataset_size = len(train_all_dataset)
-    train_size = int(dataset_size * args.env_.train_data_rate)
-    validation_size = dataset_size - train_size
-    ## 데이터셋 나누기
-    train_dataset, validation_dataset = random_split(train_all_dataset, [train_size, validation_size])
+
     
+    for k_n in range(0,args.env_.k_fold_n):
     
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset,
-        num_replicas=args.env_.gpus,
-        rank=rank)
+        ## train, val k폴드로 df 불러옴
+        train_df = df[df['kfold']!=0]
+        val_df = df[df['kfold']==0]
 
-    validation_sampler = torch.utils.data.distributed.DistributedSampler(
-        validation_dataset,
-        num_replicas=args.env_.gpus,
-        rank=rank)
+        train_dataset = CustomDataset(train_df,args.env_.train_path,tokenizer,train_transform,label_info)
+        validation_dataset = CustomDataset(val_df,args.env_.train_path,tokenizer,train_transform,label_info)
 
-    ## 데이터 로더
-    pad_token_id = tokenizer.pad_token_id
-    train_loader = DataLoader(train_dataset, batch_size = args.env_.gpus, num_workers = args.env_.num_worker,pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id),sampler=train_sampler)
-    validation_loader = DataLoader(validation_dataset, batch_size = args.env_.gpus, num_workers = args.env_.num_worker,pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id),sampler=validation_sampler)
+       
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_dataset,
+            num_replicas=args.env_.gpus,
+            rank=rank)
+
+        validation_sampler = torch.utils.data.distributed.DistributedSampler(
+            validation_dataset,
+            num_replicas=args.env_.gpus,
+            rank=rank)
+
+
+        ## 데이터 로더
+        pad_token_id = tokenizer.pad_token_id
+        train_loader = DataLoader(train_dataset, batch_size = args.parameters_.batch_size, num_workers = args.env_.num_worker,pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id),sampler=train_sampler)
+        validation_loader = DataLoader(validation_dataset, batch_size = args.parameters_.batch_size, num_workers = args.env_.num_worker,pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id),sampler=validation_sampler)
+            
+            
+
+        model = CustomModel(tokenizer,len(label_info),args.parameters_.main_model_drop_out_p,args.parameters_.image_encoder_drop_out_p,args.parameters_.image_token_size).to(rank)
         
-    # (self,tokenizer,num_cat3_classes,main_model_dropout_p,image_encoder_dropout_p,image_token_size,resnet_choice):
-    model = CustomModel(tokenizer,len(label_info),args.parameters_.main_model_drop_out_p,args.parameters_.image_encoder_drop_out_p,args.parameters_.image_token_size).to(rank)
-    
-    model = DDP(model,device_ids=[rank],find_unused_parameters=True)    
-    
-    no_decay = ["bias", "LayerNorm.weight"]
-    
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": 0.01,
-        },
-        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
-    ]
-    model.parameters()
-    optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.parameters_.lr, eps=1e-8)
+        model = DDP(model,device_ids=[rank],find_unused_parameters=True)    
         
-    ## 학습할 최종 스텝 계산    
-    t_total = len(train_loader) * args.env_.epochs
-    warmup_steps = 0
-    # lr 조금씩 감소시키는 스케줄러
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=t_total)
-    criterion = FocalLoss().to(rank)
-    
-    best_f1_score = 0
-    for epoch in range(0, args.env_.epochs):
-        lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler)
-        val_acc,val_loss,weighted_f1= val(args, model, validation_loader, epoch, rank, criterion)
+        no_decay = ["bias", "LayerNorm.weight"]
         
-        if rank == 0:
-            with mlflow.start_run(run_name=args.env_.job_name):
-                mlflow.log_params(dict(args.parameters_))   
-                mlflow.log_dict(dict(args.env_),"env.yaml")    
-                mlflow.log_metric("lr",lr,epoch)
-                mlflow.log_metric("train_acc",train_acc,epoch)
-                mlflow.log_metric("train_loss",train_loss,epoch)
-                mlflow.log_metric("val_acc",val_acc,epoch)
-                mlflow.log_metric("val_loss",val_loss,epoch)
-                mlflow.log_metric("f1_score",weighted_f1,epoch)
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": 0.01,
+            },
+            {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+        ]
+
+        optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.parameters_.lr, eps=1e-8)
+            
+        ## 학습할 최종 스텝 계산    
+        t_total = len(train_loader) * args.env_.epochs
+        warmup_steps = 0
+        # lr 조금씩 감소시키는 스케줄러
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=t_total)
+        criterion = FocalLoss().to(rank)
+        
+        
+        for epoch in range(0, args.env_.epochs):
+            lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler,k_n)
+            val_acc,val_loss,weighted_f1= val(args, model, validation_loader, epoch, rank, criterion,k_n)
+            
+            if rank==0:
+
+                mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_acc",train_acc,step=epoch)
+                mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_loss",train_loss,step=epoch)
+                mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_val_acc",val_acc,step=epoch)
+                mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_val_loss",val_loss,step=epoch)
+                mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_f1_score",weighted_f1,step=epoch)
                 
-                if best_f1_score < weighted_f1:
-                    best_f1_score = weighted_f1
+                train_acc_list[epoch].append(train_acc.view(-1))
+                train_loss_list[epoch].append(train_loss.view(-1))
+                val_acc_list[epoch].append(val_acc.view(-1))
+                val_loss_list[epoch].append(val_loss.view(-1))
+                f1_socre_list[epoch].append(weighted_f1.view(-1))
+                
+
+    
+    if rank==0:
+        train_acc_list = np.mean(train_acc_list,axis=1)
+        train_loss_list = np.mean(train_loss_list,axis=1)
+        val_acc_list = np.mean(val_acc_list,axis=1)
+        val_loss_list = np.mean(val_loss_list,axis=1)
+        f1_socre_list = np.mean(f1_socre_list,axis=1)
         
-                    save_dict = {"epoch":epoch,"best_f1_score":best_f1_score}
-                    with open("./temp.pickle",'wb') as fw:
-                        pickle.dump(save_dict,fw)
+        mlflow_client.log_dict(mlflow_run_id,{"best_f1_score":np.max(f1_socre_list),"epoch":np.argmax(f1_socre_list)},'best.yaml')
 
-
+        for list_index in range(args.env_.k_fold_n):
+            mlflow_client.log_metric(mlflow_run_id,"total_train_acc",train_acc_list[list_index],step=list_index)
+            mlflow_client.log_metric(mlflow_run_id,"total_train_loss",train_loss_list[list_index],step=list_index)
+            mlflow_client.log_metric(mlflow_run_id,"total_val_acc",val_acc_list[list_index],step=list_index)
+            mlflow_client.log_metric(mlflow_run_id,"total_val_loss",val_loss_list[list_index],step=list_index)
+            mlflow_client.log_metric(mlflow_run_id,"total_f1_score",f1_socre_list[list_index],step=list_index)
+        
+        
+        
+        ## hydra 높은값 비교용으로 저장
+        save_dict = {"epoch":np.argmax(f1_socre_list),"best_f1_score":np.max(f1_socre_list)}
+        with open("./temp.pickle",'wb') as fw:
+            pickle.dump(save_dict,fw)
 
     cleanup()
+    
     
 
 @hydra.main(version_base=None, config_path='conf',config_name="config")
