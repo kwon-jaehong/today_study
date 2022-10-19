@@ -8,7 +8,7 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,random_split
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -26,7 +26,9 @@ from mlflow.tracking import MlflowClient
 from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 from sklearn.model_selection import StratifiedKFold
 import numpy as np
+import logging
 
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
 def seed_everything(seed):
     random.seed(seed)
@@ -99,7 +101,7 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,
         train_text = t_data_batch['text']
         train_label = t_data_batch['label_3']
         train_mask = t_data_batch['mask']
-        
+             
         
         train_img = train_img.float().to(rank)
         train_text = train_text.to(rank)
@@ -132,7 +134,7 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,
             lr = param_group['lr']
             
         if(rank==0):            
-            print(f'{k_n}_fold {epoch}/{args.env_.epochs} epoch {((i*args.parameters_.batch_size)+len(train_label.view(-1)))*args.env_.gpus}/{train_data_len*args.env_.gpus} train loss {train_loss.item()/args.env_.gpus:.4f} acc : {100*train_correct/(len(train_label.view(-1))*args.env_.gpus):.2f}% - ({train_correct}/{len(train_label.view(-1))*args.env_.gpus})')
+            print(f'{k_n}_fold {epoch}/{args.env_.epochs-1} epoch {((i*args.parameters_.batch_size)+len(train_label.view(-1)))*args.env_.gpus}/{train_data_len*args.env_.gpus} train loss {train_loss.item()/args.env_.gpus:.4f} acc : {100*train_correct/(len(train_label.view(-1))*args.env_.gpus):.2f}% - ({train_correct}/{len(train_label.view(-1))*args.env_.gpus})')
    
             
     tr_loss = np.mean(train_loss_list) / args.env_.gpus
@@ -141,9 +143,7 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,
         
         for param_group in optimizer.param_groups:
             lr = param_group['lr']
-
-        
-        # torch.save(model.module.state_dict(), './'+str(epoch)+'.pth')
+            
         
     return lr,total_train_correct/(train_data_len*args.env_.gpus),tr_loss   
         
@@ -214,7 +214,7 @@ def val(args, model, validation_loader, epoch, rank,criterion,k_n):
         if (rank==0):
             weighted_f1 = score_function(rank_root_true.detach().cpu().numpy().tolist(), rank_root_preds.detach().cpu().numpy().tolist())
 
-            print(f"{k_n}_fold {epoch} val end!!! val loss : {np.mean(val_total_loss)/args.env_.gpus:.3f} \t f1 score : {weighted_f1:.2f} \t acc : {100*total_val_correct/(val_data_len*args.env_.gpus):.2f}% - ({total_val_correct}/{val_data_len*args.env_.gpus}) \n\n")    
+            print(f"{k_n}_fold {epoch} val end!!! val loss : {np.mean(val_total_loss)/args.env_.gpus:.3f} \t f1 score : {weighted_f1:.4f} \t acc : {100*total_val_correct/(val_data_len*args.env_.gpus):.2f}% - ({total_val_correct}/{val_data_len*args.env_.gpus}) \n\n")    
         return total_val_correct/(val_data_len*args.env_.gpus),np.mean(val_total_loss)/args.env_.gpus,weighted_f1
     
 
@@ -227,22 +227,23 @@ def trainer(rank, gpus, args):
 
     if rank ==0:
         mlflow_client = MlflowClient()
-        train_acc_list = [ [] for x in range(args.env_.k_fold_n) ]
-        train_loss_list = [ [] for x in range(args.env_.k_fold_n) ]
-        val_acc_list = [ [] for x in range(args.env_.k_fold_n) ]
-        val_loss_list = [ [] for x in range(args.env_.k_fold_n) ]
-        f1_socre_list = [ [] for x in range(args.env_.k_fold_n) ]
-        mlflow_run = mlflow_client.create_run(experiment_id='0',tags={MLFLOW_RUN_NAME:args.env_.job_name})
+        train_acc_list = [ [] for x in range(args.env_.epochs) ]
+        train_loss_list = [ [] for x in range(args.env_.epochs) ]
+        val_acc_list = [ [] for x in range(args.env_.epochs) ]
+        val_loss_list = [ [] for x in range(args.env_.epochs) ]
+        f1_socre_list = [ [] for x in range(args.env_.epochs) ]
+        mlflow_run = mlflow_client.create_run(experiment_id=str(args.env_.experiments_id),tags={MLFLOW_RUN_NAME:args.env_.job_name})
         mlflow_run_id = mlflow_run.info.run_id   
         mlflow_client.log_dict(mlflow_run_id,dict(args.env_),"env.yaml")
         for key,value in dict(args.parameters_).items():
             mlflow_client.log_param(mlflow_run_id,key,value)
-
+        
+        
 
 
     train_transform = A.Compose([
                             A.Resize(args.env_.image_size,args.env_.image_size),
-                            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pixel_value=255.0, always_apply=False, p=1.0),
+                            A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), max_pixel_value=255.0, always_apply=False, p=1.0),
                             ToTensorV2()
                             ])
 
@@ -253,17 +254,27 @@ def trainer(rank, gpus, args):
     df = pd.read_csv(args.env_.train_path)
     set_level_list_3 = list(set(list(df['cat3'])))
     set_level_list_3.sort()            
-    # self.num2label_3_level = {i:label for i,label in enumerate(set_level_list_3)}
     label_info= {label:i for i,label in enumerate(set_level_list_3)}
 
 
-    ## df에 k폴드 번호 지정
-    folds = StratifiedKFold(n_splits=args.env_.k_fold_n, random_state=42, shuffle=True)
     df['kfold'] = -1
-    for i in range(args.env_.k_fold_n):
-        df_idx, valid_idx = list(folds.split(df.values, df['cat3']))[i]
-        valid = df.iloc[valid_idx]
-        df.loc[df[df.id.isin(valid.id) == True].index.to_list(), 'kfold'] = i
+    if args.env_.k_fold_n==1:
+        dataset_size = len(df)
+        train_size = int(dataset_size * args.env_.train_data_rate)
+        validation_size = dataset_size - train_size
+        ## 데이터셋 나누기
+        train_index_list, validation_index_list = random_split(df, [train_size, validation_size])
+   
+        df.loc[train_index_list.indices,'kfold'] = 1
+        df.loc[validation_index_list.indices,'kfold'] = 0
+        
+    else:
+        ## df에 k폴드 번호 지정
+        folds = StratifiedKFold(n_splits=args.env_.k_fold_n, random_state=42, shuffle=True)
+        for i in range(args.env_.k_fold_n):
+            df_idx, valid_idx = list(folds.split(df.values, df['cat3']))[i]
+            valid = df.iloc[valid_idx]
+            df.loc[df[df.id.isin(valid.id) == True].index.to_list(), 'kfold'] = i
 
 
 
@@ -272,8 +283,8 @@ def trainer(rank, gpus, args):
     for k_n in range(0,args.env_.k_fold_n):
     
         ## train, val k폴드로 df 불러옴
-        train_df = df[df['kfold']!=0]
-        val_df = df[df['kfold']==0]
+        train_df = df[df['kfold']!=k_n]
+        val_df = df[df['kfold']==k_n]
 
         train_dataset = CustomDataset(train_df,args.env_.train_path,tokenizer,train_transform,label_info)
         validation_dataset = CustomDataset(val_df,args.env_.train_path,tokenizer,train_transform,label_info)
@@ -320,13 +331,34 @@ def trainer(rank, gpus, args):
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=t_total)
         criterion = FocalLoss().to(rank)
         
-        
+        best_f1 = 0
+        best_val_loss = 0
         for epoch in range(0, args.env_.epochs):
+            
             lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler,k_n)
             val_acc,val_loss,weighted_f1= val(args, model, validation_loader, epoch, rank, criterion,k_n)
             
             if rank==0:
-
+                if epoch ==0:
+                    best_val_loss = val_loss
+                    best_f1 = weighted_f1
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')        
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')        
+                
+                ## 베스트 실험결과 저장
+                if weighted_f1 > best_f1:
+                    best_f1 = weighted_f1
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')
+                    
+                    if  val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
+                        mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')
+                
+                
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_acc",train_acc,step=epoch)
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_loss",train_loss,step=epoch)
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_val_acc",val_acc,step=epoch)
@@ -334,10 +366,10 @@ def trainer(rank, gpus, args):
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_f1_score",weighted_f1,step=epoch)
                 
                 train_acc_list[epoch].append(train_acc.view(-1))
-                train_loss_list[epoch].append(train_loss.view(-1))
+                train_loss_list[epoch].append(train_loss)
                 val_acc_list[epoch].append(val_acc.view(-1))
-                val_loss_list[epoch].append(val_loss.view(-1))
-                f1_socre_list[epoch].append(weighted_f1.view(-1))
+                val_loss_list[epoch].append(val_loss)
+                f1_socre_list[epoch].append(weighted_f1)
                 
 
     
@@ -348,9 +380,9 @@ def trainer(rank, gpus, args):
         val_loss_list = np.mean(val_loss_list,axis=1)
         f1_socre_list = np.mean(f1_socre_list,axis=1)
         
-        mlflow_client.log_dict(mlflow_run_id,{"best_f1_score":np.max(f1_socre_list),"epoch":np.argmax(f1_socre_list)},'best.yaml')
+        mlflow_client.log_dict(mlflow_run_id,{"num_fold":int(k_n),"best_f1_score":float(np.max(f1_socre_list)),"epoch":int(np.argmax(f1_socre_list))},'best.yaml')
 
-        for list_index in range(args.env_.k_fold_n):
+        for list_index in range(args.env_.epochs):
             mlflow_client.log_metric(mlflow_run_id,"total_train_acc",train_acc_list[list_index],step=list_index)
             mlflow_client.log_metric(mlflow_run_id,"total_train_loss",train_loss_list[list_index],step=list_index)
             mlflow_client.log_metric(mlflow_run_id,"total_val_acc",val_acc_list[list_index],step=list_index)
@@ -360,7 +392,7 @@ def trainer(rank, gpus, args):
         
         
         ## hydra 높은값 비교용으로 저장
-        save_dict = {"epoch":np.argmax(f1_socre_list),"best_f1_score":np.max(f1_socre_list)}
+        save_dict = {"epoch":int(np.argmax(f1_socre_list)),"best_f1_score":float(np.max(f1_socre_list))}
         with open("./temp.pickle",'wb') as fw:
             pickle.dump(save_dict,fw)
 

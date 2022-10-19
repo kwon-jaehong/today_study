@@ -354,17 +354,18 @@ def trainer(rank, gpus, args):
                     mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')        
                     mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')        
                 
+                ## 베스트 실험결과 저장
                 if weighted_f1 > best_f1:
+                    best_f1 = weighted_f1
                     torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
                     mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')
-                                    
-                if weighted_f1 > best_f1 and val_loss < best_val_loss:
-                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
-                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')
+                    
+                    if  val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
+                        mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')
                 
-                # with mlflow.start_run(run_id=mlflow_run_id) as run:
-
-
+                
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_acc",train_acc,step=epoch)
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_loss",train_loss,step=epoch)
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_val_acc",val_acc,step=epoch)

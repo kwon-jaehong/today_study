@@ -5,54 +5,18 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 from d_set import CustomDataset,MyCollate
-from torch.utils.data import DataLoader, random_split
-import torch.nn as nn
+from torch.utils.data import DataLoader
 from model import CustomModel
-from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
-from kobert_tokenizer import KoBERTTokenizer
-from torch.optim.lr_scheduler import LambdaLR
-import logging as log
-from torch import Tensor
-from torch import nn
-from torch.nn import functional as F
-from typing import Optional, Sequence
 from transformers import  AutoTokenizer
 
-# log.basicConfig(filename='./log2.txt', level=log.DEBUG)
-
-# writer = SummaryWriter('runs/g2_experiment_1')
-class FocalLoss(nn.modules.loss._WeightedLoss):
-    def __init__(self, weight=None, gamma=2,reduction='mean'):
-        super(FocalLoss, self).__init__(weight,reduction=reduction)
-        self.gamma = gamma
-        self.weight = weight #weight parameter will act as the alpha parameter to balance class weights
-
-    def forward(self, input, target):
-        if len(target.shape) ==0:
-            target = target.view(-1)
-            
-        ce_loss = F.cross_entropy(input, target,reduction=self.reduction,weight=self.weight)
-        pt = torch.exp(-ce_loss)
-        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
-        
-        return focal_loss
-    
-    
 CFG = {
     'IMG_SIZE':224,
     'BATCH_SIZE':6,
     'SEED':41,
     'NUM_WORKERS':4
 }
-def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
-    def lr_lambda(current_step: int):
-        if current_step < num_warmup_steps:
-            return float(current_step) / float(max(1, num_warmup_steps))
-        return max(
-            0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
-        )
-    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
 
 def seed_everything(seed):
     random.seed(seed)
@@ -103,7 +67,7 @@ total_logit_list = []
 for i in range(0,5):
     fold_pred = None
     model = CustomModel(tokenizer,len(label_info),0.4,0.15,17).to(device)
-    model.load_state_dict(torch.load('fold_'+str(i)+'_best_f1+val_loss_model.pth'))
+    model.load_state_dict(torch.load('fold_'+str(i)+'_best_f1_model.pth')) # 결과값 0.85214
     model.eval()
     model_preds = []
     count = 0
@@ -124,18 +88,23 @@ for i in range(0,5):
                 fold_pred = model_pred.detach().cpu().numpy()
             else:
                 fold_pred =  np.concatenate((fold_pred, model_pred.detach().cpu().numpy()), axis=0)
-            
+            ## 폴드별 하드보팅용 결과값
             model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
         
         total_logit_list.append(fold_pred)
             
+    
     result = []
     for j in model_preds:
         result.append(num2label[j])
     submit['fold_'+str(i)] = result
 
 
-## 종합 결과
+## logit값을 softmax해줘야함 단순히 더해주면 안됨
+# 각 폴드별 모델 웨이트값을 softmax해준뒤 곱해준다!!!!
+## 일단 소프트 보팅 1개랑 (이파일은 보존), 웨이트 소프트 맥스한거 버젼 하나더 만들어야함
+
+## 종합 결과값 추출, 각 폴드별 logit값에 mean해주고 argmax값 뽑음 => soft voting
 result = []
 mean_pred = np.mean(total_logit_list,0)
 total_model_pred = np.argmax(mean_pred,1)
@@ -145,4 +114,4 @@ submit["soft_voitng"] = result
 
 
 
-submit.to_csv('./temp_best.csv', index=False)
+submit.to_csv('./temp_best2.csv', index=False)
