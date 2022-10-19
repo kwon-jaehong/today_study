@@ -1,4 +1,3 @@
-from http import client
 import pandas as pd
 from d_set import CustomDataset,MyCollate
 from model import CustomModel
@@ -103,6 +102,10 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,
         train_text = t_data_batch['text']
         train_label = t_data_batch['label_3']
         train_mask = t_data_batch['mask']
+        
+        # train_ori_text = t_data_batch['ori_text']
+        # train_label_name = t_data_batch['label_name']
+        
         
         
         train_img = train_img.float().to(rank)
@@ -346,18 +349,18 @@ def trainer(rank, gpus, args):
                 if epoch ==0:
                     best_val_loss = val_loss
                     best_f1 = weighted_f1
-                    torch.save(model.module.state_dict(), './best_f1+val_loss_model.pth')
-                    torch.save(model.module.state_dict(), './best_f1_model.pth')
-                    mlflow_client.log_artifact(mlflow_run_id,'best_f1+val_loss_model.pth','best_model')        
-                    mlflow_client.log_artifact(mlflow_run_id,'best_f1_model.pth','best_model')        
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')        
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')        
                 
                 if weighted_f1 > best_f1:
-                    torch.save(model.module.state_dict(), './best_f1_model.pth')
-                    mlflow_client.log_artifact(mlflow_run_id,'best_f1_model.pth','best_model')
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')
                                     
                 if weighted_f1 > best_f1 and val_loss < best_val_loss:
-                    torch.save(model.module.state_dict(), './best_f1+val_loss_model.pth')
-                    mlflow_client.log_artifact(mlflow_run_id,'best_f1+val_loss_model.pth','best_model')
+                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
+                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')
                 
                 # with mlflow.start_run(run_id=mlflow_run_id) as run:
 

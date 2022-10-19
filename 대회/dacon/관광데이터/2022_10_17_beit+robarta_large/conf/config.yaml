@@ -20,23 +20,23 @@ hydra:
       parameters_.lr: range(0.00001, 0.00005, 0.00001)
 
 parameters_:
-  batch_size: 1
+  batch_size: 5
   lr: 0.00002
-  image_token_size: 3
-  main_model_drop_out_p: 0.3
-  image_encoder_drop_out_p: 0.1
+  image_token_size: 17
+  main_model_drop_out_p: 0.4
+  image_encoder_drop_out_p: 0.15
   
 env_:
-  # image_size: 224
-  image_size: 512
-  epochs: 3
+  image_size: 224
+  # image_size: 512
+  epochs: 12
   gpus: 2
   num_worker: 4
   train_data_rate: 0.9
   # train_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/train_sample_startifedkfold.csv"
   train_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/train.csv"
   test_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/test.csv"
-  k_fold_n: 1
+  k_fold_n: 5
   experiments_id: 0
   
 

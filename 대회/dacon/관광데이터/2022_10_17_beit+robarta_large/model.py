@@ -26,12 +26,12 @@ class imageEmbeddings(nn.Module):
         
         # Image 이미지를 beit모델로 token화
 
-        # self.image_extract = BeitModel.from_pretrained('microsoft/beit-base-patch16-224',cache_dir="./temp")
-        self.image_extract = BeitModel.from_pretrained('microsoft/beit-large-patch16-512',cache_dir="./temp")
+        self.image_extract = BeitModel.from_pretrained('microsoft/beit-base-patch16-224',cache_dir="./temp")
+        # self.image_extract = BeitModel.from_pretrained('microsoft/beit-large-patch16-512',cache_dir="./temp")
         
         ## 이미지 인코더 파라미터 프리징
-        for para in self.image_extract.parameters():
-            para.requires_grad = False
+        # for para in self.image_extract.parameters():
+            # para.requires_grad = False
                
         ## 토큰화된 이미지 평균 풀링 진행
         self.avgpool = nn.AdaptiveAvgPool2d((image_token_size, self.embedding_dim))
@@ -86,8 +86,8 @@ class CustomModel(nn.Module):
         self.tokenizer = tokenizer
         
         # text 임베딩용 bert 모델
-        # self.transformer = AutoModel.from_pretrained('klue/roberta-base',cache_dir="./temp")     
-        self.transformer = AutoModel.from_pretrained('klue/roberta-large',cache_dir="./temp")         
+        self.transformer = AutoModel.from_pretrained('klue/roberta-base',cache_dir="./temp")     
+        # self.transformer = AutoModel.from_pretrained('klue/roberta-large',cache_dir="./temp")         
         self.main_embedding_size = self.transformer.config.hidden_size
                
                
