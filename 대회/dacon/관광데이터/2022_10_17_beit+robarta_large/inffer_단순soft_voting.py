@@ -86,6 +86,7 @@ for i in range(0,5):
             ## 모델을 통과해서 나온 로짓값
             model_pred = model(img, text,mask,device) 
             
+            ## 이상하게... 모델 로직값 단순 더한게 제출 점수가 더 높음....            
             if str(type(fold_pred_softmax_val)) == "<class 'NoneType'>":
                 fold_pred_softmax_val = F.softmax(model_pred.detach().cpu(), dim=1).detach().cpu().numpy()                
             else:
@@ -112,6 +113,5 @@ for j in total_model_pred:
     result.append(num2label[j])
 submit["soft_voitng"] = result
 
-
-
 submit.to_csv('./temp_best2.csv', index=False)
+

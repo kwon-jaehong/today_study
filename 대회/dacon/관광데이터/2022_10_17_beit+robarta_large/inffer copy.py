@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from model import CustomModel
 import pandas as pd
 from transformers import  AutoTokenizer
+import torch.nn.functional as F
 
 CFG = {
     'IMG_SIZE':224,
@@ -64,16 +65,15 @@ test_loader = DataLoader(test_dataset, batch_size = CFG['BATCH_SIZE'], num_worke
 submit = pd.read_csv('../sample_submission.csv')
 
 total_logit_list = []
+total_pred_softmax = []
 for i in range(0,5):
-    fold_pred = None
+    fold_pred_softmax_val = None
     model = CustomModel(tokenizer,len(label_info),0.4,0.15,17).to(device)
     model.load_state_dict(torch.load('fold_'+str(i)+'_best_f1_model.pth')) # 결과값 0.85214
     model.eval()
-    model_preds = []
-    count = 0
+    model_preds_correct = []
     with torch.no_grad():
         for data_batch in test_loader:
-            count  += len(data_batch['image'])
 
             img = data_batch['image']
             text = data_batch['text']
@@ -83,25 +83,26 @@ for i in range(0,5):
             text = text.to(device)
             mask = mask.to(device)
             
+            ## 모델을 통과해서 나온 로짓값
             model_pred = model(img, text,mask,device) 
-            if str(type(fold_pred)) == "<class 'NoneType'>":
-                fold_pred = model_pred.detach().cpu().numpy()
+            
+            if str(type(fold_pred_softmax_val)) == "<class 'NoneType'>":
+                fold_pred_softmax_val = F.softmax(model_pred.detach().cpu(), dim=1).detach().cpu().numpy()                
             else:
-                fold_pred =  np.concatenate((fold_pred, model_pred.detach().cpu().numpy()), axis=0)
-            ## 폴드별 하드보팅용 결과값
-            model_preds += model_pred.argmax(1).detach().cpu().numpy().tolist()
+                fold_pred_softmax_val =  np.concatenate((fold_pred_softmax_val, F.softmax(model_pred.detach().cpu(), dim=1).detach().cpu().numpy()), axis=0)
+            ## 폴드별 클래스 결과값(max)
+            model_preds_correct += model_pred.argmax(1).detach().cpu().numpy().tolist()
         
-        total_logit_list.append(fold_pred)
+        total_logit_list.append(fold_pred_softmax_val)
             
     
     result = []
-    for j in model_preds:
+    for j in model_preds_correct:
         result.append(num2label[j])
     submit['fold_'+str(i)] = result
 
 
 ## logit값을 softmax해줘야함 단순히 더해주면 안됨
-# 각 폴드별 모델 웨이트값을 softmax해준뒤 곱해준다!!!!
 ## 일단 소프트 보팅 1개랑 (이파일은 보존), 웨이트 소프트 맥스한거 버젼 하나더 만들어야함
 
 ## 종합 결과값 추출, 각 폴드별 logit값에 mean해주고 argmax값 뽑음 => soft voting

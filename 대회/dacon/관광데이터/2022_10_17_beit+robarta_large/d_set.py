@@ -52,9 +52,8 @@ class CustomDataset(Dataset):
         if self.infer:
             return image, torch.Tensor(text_token).view(-1).to(torch.long)
         else:
-
             label_3_level = self.label_2_num[self.label_level_list_3[index]]
-            return image, torch.Tensor(text_token).view(-1).to(torch.long), torch.tensor([label_3_level],dtype=torch.long)
+            return image, torch.Tensor(text_token).view(-1).to(torch.long), torch.tensor([label_3_level],dtype=torch.long),index
 
     def __len__(self):
         return len(self.df)
@@ -87,9 +86,9 @@ class MyCollate:
         
         if self.infer==False:
             # label_level_1 = [item[2] for item in batch]
-            # label_level_2 = [item[3] for item in batch]
+            index_list = [item[3] for item in batch]
             label_level_3 = [item[2] for item in batch]  
-            return {"image":torch.stack(image),"text":text,"mask":mask_tensor,"label_3":torch.stack(label_level_3).squeeze()}
+            return {"image":torch.stack(image),"text":text,"mask":mask_tensor,"label_3":torch.stack(label_level_3).squeeze(),"index_list":index_list}
         else:
             return {"image":torch.stack(image),"text":text,"mask":mask_tensor}
     

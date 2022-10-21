@@ -27,7 +27,9 @@ from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 from sklearn.model_selection import StratifiedKFold
 import numpy as np
 import logging
-import mlflow.pytorch
+import shutil
+import pathlib
+
 
 logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
@@ -72,7 +74,7 @@ def gather(tensor, tensor_list=None, root=0, group=None):
 
 def score_function(real, pred):
     return f1_score(real, pred, average="weighted")
-
+  
 class FocalLoss(nn.modules.loss._WeightedLoss):
     def __init__(self, weight=None, gamma=2,reduction='mean'):
         super(FocalLoss, self).__init__(weight,reduction=reduction)
@@ -93,8 +95,7 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,
     model.train()
     train_loss_list = []   
     train_data_len = len(train_loader)*args.parameters_.batch_size
-    total_train_correct = 0
-    
+    total_train_correct = 0    
     
     
     for i,t_data_batch in enumerate(train_loader):
@@ -102,11 +103,7 @@ def train(args, model, train_loader, optimizer, epoch, rank,criterion,scheduler,
         train_text = t_data_batch['text']
         train_label = t_data_batch['label_3']
         train_mask = t_data_batch['mask']
-        
-        # train_ori_text = t_data_batch['ori_text']
-        # train_label_name = t_data_batch['label_name']
-        
-        
+              
         
         train_img = train_img.float().to(rank)
         train_text = train_text.to(rank)
@@ -166,19 +163,31 @@ def val(args, model, validation_loader, epoch, rank,criterion,k_n):
     
     val_model_preds = []
     val_true_labels = []
+    val_pred_info_list =[]
     with torch.no_grad():
         for val_data_batch in validation_loader:
             val_img = val_data_batch['image']
             val_text = val_data_batch['text']
             val_label = val_data_batch['label_3']
             val_mask = val_data_batch['mask']
+            
+        
         
             val_img = val_img.float().to(rank)
             val_text = val_text.to(rank)
             val_label = val_label.to(rank)
             val_mask = val_mask.to(rank)
             
-            model_pred = model(val_img, val_text,val_mask,rank)          
+            
+            model_pred = model(val_img, val_text,val_mask,rank)        
+            
+
+            ## 검증 통계용으로 index list 저장
+            ## df 인덱스, 예측 logit max index값, 타겟, 실제 로짓값
+            pred_info =[ [index,np.argmax(pred_logit),target,pred_logit] for index,pred_logit,target in zip(val_data_batch['index_list'],model_pred.detach().cpu().tolist(),val_label.view(-1).detach().cpu().tolist())]
+            val_pred_info_list = val_pred_info_list + pred_info
+            
+            
             
             val_loss = criterion(model_pred, val_label)            
             _, val_predicted = torch.max(model_pred, 1) 
@@ -222,7 +231,7 @@ def val(args, model, validation_loader, epoch, rank,criterion,k_n):
             weighted_f1 = score_function(rank_root_true.detach().cpu().numpy().tolist(), rank_root_preds.detach().cpu().numpy().tolist())
 
             print(f"{k_n}_fold {epoch} val end!!! val loss : {np.mean(val_total_loss)/args.env_.gpus:.3f} \t f1 score : {weighted_f1:.2f} \t acc : {100*total_val_correct/(val_data_len*args.env_.gpus):.2f}% - ({total_val_correct}/{val_data_len*args.env_.gpus}) \n\n")    
-        return total_val_correct/(val_data_len*args.env_.gpus),np.mean(val_total_loss)/args.env_.gpus,weighted_f1
+        return total_val_correct/(val_data_len*args.env_.gpus),np.mean(val_total_loss)/args.env_.gpus,weighted_f1,val_pred_info_list
     
 
 def trainer(rank, gpus, args):
@@ -258,7 +267,7 @@ def trainer(rank, gpus, args):
 
     
     ## 라벨링 cat3를 dict로 작업
-    df = pd.read_csv(args.env_.train_path)
+    df = pd.read_csv(args.env_.train_path,index_col=0)
     set_level_list_3 = list(set(list(df['cat3'])))
     set_level_list_3.sort()            
     label_info= {label:i for i,label in enumerate(set_level_list_3)}
@@ -270,14 +279,14 @@ def trainer(rank, gpus, args):
         train_size = int(dataset_size * args.env_.train_data_rate)
         validation_size = dataset_size - train_size
         ## 데이터셋 나누기
-        train_index_list, validation_index_list = random_split(df, [train_size, validation_size])
-   
+        train_index_list, validation_index_list = random_split(df, [train_size, validation_size])   
         df.loc[train_index_list.indices,'kfold'] = 1
         df.loc[validation_index_list.indices,'kfold'] = 0
         
     else:
         ## df에 k폴드 번호 지정
-        folds = StratifiedKFold(n_splits=args.env_.k_fold_n, random_state=42, shuffle=True)
+        # folds = StratifiedKFold(n_splits=args.env_.k_fold_n, random_state=42, shuffle=True)
+        folds = StratifiedKFold(n_splits=args.env_.k_fold_n)
         for i in range(args.env_.k_fold_n):
             df_idx, valid_idx = list(folds.split(df.values, df['cat3']))[i]
             valid = df.iloc[valid_idx]
@@ -293,6 +302,11 @@ def trainer(rank, gpus, args):
         train_df = df[df['kfold']!=k_n]
         val_df = df[df['kfold']==k_n]
 
+        if rank==0:
+            train_df.to_csv(os.path.join(args.env_.data_save_dir,str(k_n)+'_flod_train_df.csv'))
+            val_df.to_csv(os.path.join(args.env_.data_save_dir,str(k_n)+'_flod_val_df.csv'))
+            
+        
         train_dataset = CustomDataset(train_df,args.env_.train_path,tokenizer,train_transform,label_info)
         validation_dataset = CustomDataset(val_df,args.env_.train_path,tokenizer,train_transform,label_info)
 
@@ -324,7 +338,7 @@ def trainer(rank, gpus, args):
         optimizer_grouped_parameters = [
             {
                 "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": 0.01,
+                "weight_decay": args.parameters_.weight_decay,
             },
             {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
         ]
@@ -343,28 +357,59 @@ def trainer(rank, gpus, args):
         for epoch in range(0, args.env_.epochs):
             
             lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler,k_n)
-            val_acc,val_loss,weighted_f1= val(args, model, validation_loader, epoch, rank, criterion,k_n)
+            val_acc,val_loss,weighted_f1,val_pred_info_list= val(args, model, validation_loader, epoch, rank, criterion,k_n)
+            
+            
+            ## 에폭별 val 자료 분석
+
+            epoch_val_df = val_df.copy()
+            epoch_val_df = epoch_val_df.reset_index(drop=True)
+            epoch_val_df['predict_label_number'] = -1
+            epoch_val_df['target'] = -1
+            epoch_val_df['predict_correct'] = False
+            epoch_val_df['predict_logit'] = pd.NaT         
+            epoch_val_df['predict_logit'] = epoch_val_df['predict_logit'].astype(object)           
+            
+            ## val 결과값들 정제 하고 gpu rank별 csv로 만들어 저장
+            for data in val_pred_info_list:
+                index_number = data[0]
+                predict_label_number = data[1]
+                target_label_number = data[2]
+                predict_logit = data[3]             
+                epoch_val_df.iat[index_number,epoch_val_df.columns.get_loc('target')] = target_label_number
+                epoch_val_df.iat[index_number,epoch_val_df.columns.get_loc('predict_label_number')] = predict_label_number
+                epoch_val_df.iat[index_number,epoch_val_df.columns.get_loc('predict_logit')] = predict_logit
+                epoch_val_df.iat[index_number,epoch_val_df.columns.get_loc('predict_correct')] = target_label_number==predict_label_number
+            epoch_val_df = epoch_val_df.dropna()
+            epoch_val_df.to_csv(os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_epoch_'+str(epoch)+"_valdf_rank_"+str(rank)+".csv"),index=False)
+            
+                
+                
             
             if rank==0:
                 if epoch ==0:
                     best_val_loss = val_loss
                     best_f1 = weighted_f1
-                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
-                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
-                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')        
-                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')        
+                    
+                    torch.save(model.module.state_dict(), os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth'))
+                    torch.save(model.module.state_dict(), os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1_model.pth'))
+                    mlflow_client.log_artifact(mlflow_run_id,os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth'),'best_model')        
+                    mlflow_client.log_artifact(mlflow_run_id,os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1_model.pth'),'best_model')        
                 
                 ## 베스트 실험결과 저장
                 if weighted_f1 > best_f1:
                     best_f1 = weighted_f1
-                    torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1_model.pth')
-                    mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1_model.pth','best_model')
+                    torch.save(model.module.state_dict(), os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1_model.pth'))
+                    mlflow_client.log_artifact(mlflow_run_id,os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1_model.pth'),'best_model')
                     
                     if  val_loss < best_val_loss:
                         best_val_loss = val_loss
-                        torch.save(model.module.state_dict(), './fold_'+str(k_n)+'_best_f1+val_loss_model.pth')
-                        mlflow_client.log_artifact(mlflow_run_id,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth','best_model')
+                        torch.save(model.module.state_dict(), os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth'))
+                        mlflow_client.log_artifact(mlflow_run_id,os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_best_f1+val_loss_model.pth'),'best_model')
                 
+                
+      
+                    
                 
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_acc",train_acc,step=epoch)
                 mlflow_client.log_metric(mlflow_run_id,str(k_n)+"_fold_train_loss",train_loss,step=epoch)
@@ -377,6 +422,9 @@ def trainer(rank, gpus, args):
                 val_acc_list[epoch].append(val_acc.view(-1))
                 val_loss_list[epoch].append(val_loss)
                 f1_socre_list[epoch].append(weighted_f1)
+                
+                
+                
                 
 
     
@@ -403,6 +451,28 @@ def trainer(rank, gpus, args):
         with open("./temp.pickle",'wb') as fw:
             pickle.dump(save_dict,fw)
 
+
+    ## val 데이터 합성 -> rank마다 따로 계산된것들 병합하는 작업
+    ## mlflow 아티팩트로 저장
+    if rank==0:
+        
+        ## 폴드별, 에폭별, 분산 gpu val 계산 종합
+        for k_n in range(0,args.env_.k_fold_n):
+            for epoch in range(0, args.env_.epochs):
+                total_val_df = pd.read_csv(os.path.join(args.env_.data_save_dir,str(k_n)+'_flod_val_df.csv'),index_col=0)
+                for gpu_number in range(0,gpus):
+                    ## 각 rank별 계산된것들 val df를 concat함
+                    temp_valdf = pd.read_csv(os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_epoch_'+str(epoch)+"_valdf_rank_"+str(gpu_number)+".csv"))
+                    if gpu_number==0:
+                        val_total_anlydf = temp_valdf
+                    else:
+                        val_total_anlydf = pd.concat([val_total_anlydf,temp_valdf])
+                        
+                ## df 합친걸 join하고 정보 저장  
+                total_val_df = pd.merge(left = total_val_df , right = val_total_anlydf[['id','predict_label_number','target','predict_correct','predict_logit']], left_on = "id",right_on = "id", how = "left")
+                total_val_df.to_csv(os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_epoch_'+str(epoch)+"_val_analysis.csv"),index=False)
+                mlflow_client.log_artifact(mlflow_run_id,os.path.join(args.env_.data_save_dir,'fold_'+str(k_n)+'_epoch_'+str(epoch)+"_val_analysis.csv"),'val_analysis')
+                    
     cleanup()
     
     
@@ -422,13 +492,20 @@ def main(config: DictConfig):
     with open_dict(config):
         config.env_.job_name = hydra_job_num
         
-    
         
+    ## 결과 임시 저장 폴더
+    pathlib.Path(config.env_.data_save_dir).mkdir(parents=True, exist_ok=True)
+
+    
     mp.spawn(trainer, args=(config.env_.gpus, config), nprocs=config.env_.gpus, join=True)
     
 
     with open('./temp.pickle','rb') as fr:
         best_f1_score = pickle.load(fr)
+        
+    
+    if os.path.exists(config.env_.data_save_dir):
+        shutil.rmtree(config.env_.data_save_dir)
     
     return best_f1_score['best_f1_score']
     

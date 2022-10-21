@@ -30,8 +30,8 @@ class imageEmbeddings(nn.Module):
         # self.image_extract = BeitModel.from_pretrained('microsoft/beit-large-patch16-512',cache_dir="./temp")
         
         ## 이미지 인코더 파라미터 프리징
-        # for para in self.image_extract.parameters():
-            # para.requires_grad = False
+        for para in self.image_extract.parameters():
+            para.requires_grad = False
                
         ## 토큰화된 이미지 평균 풀링 진행
         self.avgpool = nn.AdaptiveAvgPool2d((image_token_size, self.embedding_dim))
