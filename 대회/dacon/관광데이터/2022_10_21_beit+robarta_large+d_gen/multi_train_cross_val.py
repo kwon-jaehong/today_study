@@ -1,4 +1,5 @@
 import pandas as pd
+from sklearn.utils import shuffle
 from d_set import CustomDataset,MyCollate
 from model import CustomModel
 import random
@@ -29,6 +30,7 @@ import numpy as np
 import logging
 import shutil
 import pathlib
+from eda import custom_oversampling
 
 
 logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
@@ -264,10 +266,11 @@ def trainer(rank, gpus, args):
                             ])
 
     tokenizer = AutoTokenizer.from_pretrained("klue/roberta-base",cache_dir="./temp")
-
+    # tokenizer = AutoTokenizer.from_pretrained("klue/roberta-large",cache_dir="./temp")
     
     ## 라벨링 cat3를 dict로 작업
     df = pd.read_csv(args.env_.train_path,index_col=0)
+    df = df.reset_index()
     set_level_list_3 = list(set(list(df['cat3'])))
     set_level_list_3.sort()            
     label_info= {label:i for i,label in enumerate(set_level_list_3)}
@@ -293,7 +296,7 @@ def trainer(rank, gpus, args):
             df.loc[df[df.id.isin(valid.id) == True].index.to_list(), 'kfold'] = i
 
 
-
+    
 
     f_best_f1 = {}
     f_best_f1_valloss = {}
@@ -302,29 +305,34 @@ def trainer(rank, gpus, args):
         ## train, val k폴드로 df 불러옴
         train_df = df[df['kfold']!=k_n]
         val_df = df[df['kfold']==k_n]
+        
+        ## 데이터셋 증강 시킬것인지
+        if args.parameters_.argument_text_data:
+            train_df = custom_oversampling(train_df,'cat3',args.parameters_.argument_text_rank)
 
         if rank==0:
             train_df.to_csv(os.path.join(args.env_.data_save_dir,str(k_n)+'_flod_train_df.csv'))
             val_df.to_csv(os.path.join(args.env_.data_save_dir,str(k_n)+'_flod_val_df.csv'))
+            mlflow_client.log_artifact(mlflow_run_id,os.path.join(args.env_.data_save_dir,str(k_n)+'_flod_train_df.csv'),'train_df')
+        
+                
             
         
         train_dataset = CustomDataset(train_df,args.env_.train_path,tokenizer,train_transform,label_info)
         validation_dataset = CustomDataset(val_df,args.env_.train_path,tokenizer,train_transform,label_info)
 
-       
-        train_sampler = torch.utils.data.distributed.DistributedSampler(
-            train_dataset,
-            num_replicas=args.env_.gpus,
-            rank=rank)
+        ## 샘플러 셔플 -> 데이터 증강 했을때만
+        if args.parameters_.argument_text_data:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,num_replicas=args.env_.gpus,rank=rank,shuffle=True)
+        else:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,num_replicas=args.env_.gpus,rank=rank)
+        validation_sampler = torch.utils.data.distributed.DistributedSampler(validation_dataset,num_replicas=args.env_.gpus,rank=rank)
 
-        validation_sampler = torch.utils.data.distributed.DistributedSampler(
-            validation_dataset,
-            num_replicas=args.env_.gpus,
-            rank=rank)
 
 
         ## 데이터 로더
         pad_token_id = tokenizer.pad_token_id
+
         train_loader = DataLoader(train_dataset, batch_size = args.parameters_.batch_size, num_workers = args.env_.num_worker,pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id),sampler=train_sampler)
         validation_loader = DataLoader(validation_dataset, batch_size = args.parameters_.batch_size, num_workers = args.env_.num_worker,pin_memory=True, collate_fn = MyCollate(pad_idx=pad_token_id),sampler=validation_sampler)
             
@@ -360,6 +368,7 @@ def trainer(rank, gpus, args):
         for epoch in range(0, args.env_.epochs):
             
             lr,train_acc,train_loss = train(args, model, train_loader, optimizer, epoch, rank, criterion,scheduler,k_n)
+            torch.save(model.module.state_dict(), os.path.join('fold_'+str(k_n)+'_epoch_'+str(epoch)+'_model.pth'))
             val_acc,val_loss,weighted_f1,val_pred_info_list= val(args, model, validation_loader, epoch, rank, criterion,k_n)
             
             
