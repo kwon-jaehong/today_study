@@ -28,22 +28,22 @@ parameters_:
   main_model_drop_out_p: 0.5
   image_encoder_drop_out_p: 0.15
   weight_decay: 0.01
-  argument_text_data: True
+  argument_text_data: False
   argument_text_rank: 5
   
 
 env_:
   image_size: 224
   # image_size: 512
-  epochs: 20
+  epochs: 12
   gpus: 2
   num_worker: 4
   train_data_rate: 0.9
   data_save_dir: "./data_save_temp"
-  # train_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/train_sample_startifedkfold.csv"
+  # train_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/train_sample.csv"
   train_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/train.csv"
-  test_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/test.csv"
-  k_fold_n: 5
+  test_path: "/data/mrjaehong/handwriting_gen/today_study/대회/dacon/관광데이터/test2.csv"
+  k_fold_n: 1
   experiments_id: 0
   
 
