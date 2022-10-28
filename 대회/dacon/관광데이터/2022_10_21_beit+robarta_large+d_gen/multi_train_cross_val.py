@@ -1,11 +1,9 @@
 import pandas as pd
-from sklearn.utils import shuffle
 from d_set import CustomDataset,MyCollate
 from model import CustomModel
 import random
 import torch
 import os
-import numpy as np
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 import torch.nn as nn
