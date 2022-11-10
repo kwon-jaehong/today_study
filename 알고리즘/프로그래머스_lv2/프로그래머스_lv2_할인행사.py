@@ -45,11 +45,8 @@ number = [3, 2, 2, 2, 1]
 discount = ["chicken", "apple", "apple", "banana", "rice", "apple", "pork", "banana", "pork", "rice", "pot", "banana", "apple", "banana"]
 
 import collections
-
 day = 0
-
 want_dict = collections.Counter({x:y for x,y in zip(want,number)})
-
 for i in range(0,len(discount)-9):
     temp_counter = collections.Counter(discount[i:i+10])
     if want_dict == temp_counter:
