@@ -19,3 +19,5 @@ hydra.yaml
 overrides.yaml
 .hydra
 *.tar
+parseq/
+env2/

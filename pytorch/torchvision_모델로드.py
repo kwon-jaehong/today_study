@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 
+
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 

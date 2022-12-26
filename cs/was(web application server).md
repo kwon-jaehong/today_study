@@ -45,12 +45,18 @@ WAS를 검색해보면 왜 죄다 자바만 검색되나?
 ---------------------------------------------------------
 https://www.youtube.com/watch?v=gh7R3zXTtqA
 https://www.youtube.com/watch?v=D-tmr5hhrBE&t=75s
+https://breezymind.com/start-asgi-framework/
 
 WSGI(Web Server Gateway Interface)
 -> 뜻은 파이썬으로 쓰여진 웹 어플리케이션 혹은 웹서버에게 요청을 전달해주기위한 호출 규격이다
 -> 그러니까 파이썬으로 짠(flask나 장고) 프로그램을 WAS, 와 웹서버간 통신을 하게 해주는 프로토콜이다.
 -> 웹서버에 들어온(엔진엑스나 아파치) 신호를 WSGI를 통해 python로 바꾸어줌(연동해줌)
 앞단에 엔진엑스나 아파치가 없어도 동작하지만, 그이유는 장고나, 플라스크 자체를 하나의 웹서버로 보기때문임
+또한 WSGI는 동기식이다.
+
+gunicorn(WSGI) 과 uvicorn(ASGI) 을 같이 사용하고 있는데 왜 그럴까?
+
+ASGI( Asynchronous Server Gateway Interface )는 WSGI의 정신적 계승자로, 비동기 가능 Python 웹 서버, 프레임워크 및 애플리케이션 간의 표준 인터페이스를 제공하기 위한 것입니다.
 
 
 장고나 플라스크가 왜 그냥 실행될까?
@@ -73,7 +79,11 @@ uWSGI나 gunicorn은 다 WSGI 컨테이너이다.
 웹 프레임워크는 웹 애플리케이션을 개발하기위한 체계이다.
 
 
+------------------------------------------------------
+https://www.youtube.com/watch?v=bW31xiNB8Nc&t=48s
+CORS
 
+ 
 
 
 
