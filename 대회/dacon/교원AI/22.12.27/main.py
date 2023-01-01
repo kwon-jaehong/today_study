@@ -38,9 +38,9 @@ scheduler = OneCycleLR(model.optim, 0.00035, epochs*(len(train_dataset)*batch_si
 
 for epoch in range(0,epochs):
     
-    model.train()
+    
     for images, labels  in train_loader:
-        
+        model.train()
         # model.forward_logits_loss(images,labels)
         
         
@@ -89,12 +89,11 @@ for epoch in range(0,epochs):
         scheduler.step()
         
         
+        model.eval()
         logits = model.forward(images)
         probs = logits.softmax(-1)
-        preds, probs = model.tokenizer.decode(probs)
-        # print(preds)
-        
+        preds, probs = model.tokenizer.decode(probs)        
         print(loss.item(),labels,preds)
-
+# ['활발해지다', '머물다', '요즈음', '황', '삶다', '더욱', '두뇌', '지난날', '자', '것', '보조', '화면', '쁩', '장면', '벌레', '팔십', '새로이', '이', '상식', '중단', '늙다', '성숙하다', '짙다', '외', '보이다', '폼', '마음대로', '특수', '잦', '흔들다', '목숨', '안전', '아무런', '맡다', '부르다', '뱝', '태도', '그리', '기업인', '의도적', '중심지', '밤색', '불빛', '겟', '한데', '끅', '범죄', '가정', '매너', '소포', '휴지통', '독립', '기술하다', '섭섭하다', '가리다', '장차', '정말', '출석하다', '미니', '섬', '좌우', '전하다', '가족', '이발소']
 
 print(0)
